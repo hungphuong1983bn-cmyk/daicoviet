@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Đại Cồ Việt – Thủ Thành Hoa Lư</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ================= MÀN HÌNH LOGO ================= -->
+<section id="screen-splash" class="screen active">
+  <div class="splash-drum">
+    <div class="drum-ring drum-ring-1"></div>
+    <div class="drum-ring drum-ring-2"></div>
+    <div class="drum-ring drum-ring-3"></div>
+    <div class="drum-star">☀</div>
+  </div>
+  <h1 class="game-title">ĐẠI CỒ VIỆT</h1>
+  <p class="game-subtitle">THỦ THÀNH HOA LƯ</p>
+  <p class="splash-hint">Chạm để bắt đầu</p>
+</section>
+
+<!-- ================= MÀN HÌNH MENU CHÍNH ================= -->
+<section id="screen-menu" class="screen">
+  <div class="menu-panel">
+    <h2 class="panel-title">ĐẠI CỒ VIỆT</h2>
+    <p class="panel-sub">Thủ Thành Hoa Lư</p>
+    <nav class="menu-list">
+      <button class="btn btn-primary" id="btn-start">Bắt đầu</button>
+      <button class="btn" id="btn-continue">Tiếp tục</button>
+      <button class="btn" id="btn-guide">Hướng dẫn</button>
+      <button class="btn" id="btn-settings">Cài đặt</button>
+    </nav>
+    <p class="menu-footnote">năm 968 – Đinh Bộ Lĩnh dẹp loạn 12 sứ quân</p>
+  </div>
+</section>
+
+<!-- ================= MÀN HÌNH HƯỚNG DẪN ================= -->
+<section id="screen-guide" class="screen">
+  <div class="menu-panel wide">
+    <h2 class="panel-title">Hướng dẫn</h2>
+    <div class="guide-content">
+      <p><strong>Mục tiêu:</strong> Bảo vệ thành Hoa Lư khỏi quân của các sứ quân nổi loạn.</p>
+      <ul>
+        <li>Chạm vào <strong>ô đất trống</strong> cạnh đường đi để xây <strong>quân thủ thành</strong>.</li>
+        <li>Mỗi loại quân tốn <strong>vàng</strong>, tiêu diệt địch để nhận thêm vàng.</li>
+        <li>Nhấn <strong>Bắt đầu đợt</strong> để thả quân địch của đợt (Wave) hiện tại.</li>
+        <li>Nếu địch lọt đến thành, <strong>HP thành</strong> sẽ giảm. Hết HP là thua.</li>
+        <li>Sống sót qua hết các đợt để <strong>chiến thắng</strong> màn chơi.</li>
+        <li>Dùng nút tốc độ <strong>1x / 2x</strong> để đẩy nhanh trận đánh.</li>
+      </ul>
+      <p>Tiến trình được tự động lưu lại trên trình duyệt của bạn.</p>
+    </div>
+    <button class="btn btn-primary" id="btn-guide-back">Quay lại</button>
+  </div>
+</section>
+
+<!-- ================= MÀN HÌNH CÀI ĐẶT ================= -->
+<section id="screen-settings" class="screen">
+  <div class="menu-panel">
+    <h2 class="panel-title">Cài đặt</h2>
+    <div class="settings-row">
+      <span>Âm thanh</span>
+      <button class="btn btn-toggle" id="btn-toggle-sound">Bật</button>
+    </div>
+    <div class="settings-row">
+      <span>Xoá tiến trình</span>
+      <button class="btn btn-danger" id="btn-reset-progress">Xoá</button>
+    </div>
+    <button class="btn btn-primary" id="btn-settings-back">Quay lại</button>
+  </div>
+</section>
+
+<!-- ================= MÀN HÌNH CHƠI ================= -->
+<section id="screen-game" class="screen">
+  <div class="hud">
+    <div class="hud-stat hud-gold"><span class="hud-icon">🪙</span><span id="hud-gold">0</span></div>
+    <div class="hud-stat hud-hp"><span class="hud-icon">🏯</span><span id="hud-hp">0</span></div>
+    <div class="hud-stat hud-wave"><span class="hud-icon">⚔</span><span id="hud-wave">0/0</span></div>
+    <div class="hud-actions">
+      <button class="btn btn-small" id="btn-speed">x1</button>
+      <button class="btn btn-small" id="btn-pause">II</button>
+      <button class="btn btn-small btn-exit" id="btn-exit">✕</button>
+    </div>
+  </div>
+
+  <div class="game-stage">
+    <canvas id="game-canvas" width="960" height="540"></canvas>
+    <div id="tower-picker" class="tower-picker hidden"></div>
+  </div>
+
+  <div class="game-footer">
+    <button class="btn btn-primary btn-wave" id="btn-start-wave">Bắt đầu đợt</button>
+  </div>
+
+  <!-- Overlay thắng / thua -->
+  <div id="overlay-result" class="overlay hidden">
+    <div class="overlay-panel">
+      <h2 id="overlay-title">Chiến thắng!</h2>
+      <p id="overlay-desc"></p>
+      <div class="overlay-actions">
+        <button class="btn btn-primary" id="btn-result-retry">Chơi lại</button>
+        <button class="btn" id="btn-result-menu">Về menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overlay tạm dừng -->
+  <div id="overlay-pause" class="overlay hidden">
+    <div class="overlay-panel">
+      <h2>Tạm dừng</h2>
+      <div class="overlay-actions">
+        <button class="btn btn-primary" id="btn-resume">Tiếp tục chơi</button>
+        <button class="btn" id="btn-pause-menu">Về menu</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script src="js/data.js"></script>
+<script src="js/state.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
