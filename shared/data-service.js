@@ -36,7 +36,7 @@ const DataService = (() => {
     adminLogs: "collection:adminLogs",
   };
 
-  const SCHEMA_VERSION = 3;
+  const SCHEMA_VERSION = 4;
 
   /* ---------------------------------------------------------
      DỮ LIỆU MẶC ĐỊNH (seed)
@@ -46,7 +46,7 @@ const DataService = (() => {
      --------------------------------------------------------- */
   function defaultGameConfig() {
     return {
-      MAX_LEVEL: 10,
+      MAX_LEVEL: 9,
       START_GOLD: 150,
       START_HP: 20,
       START_STAGE: "hoa_lu",
@@ -219,6 +219,30 @@ const DataService = (() => {
         defense: 0, resistance: 25,
         color: "#5a4a2f", radius: 12, icon: "🎯", enabled: true,
       },
+      {
+        id: "ky_binh_nguyen", name: "Kỵ binh Nguyên Mông",
+        hp: 170, speed: 72, reward: 26, damage: 3,
+        defense: 6, resistance: 10,
+        color: "#3a2a1a", radius: 14, icon: "🐴", enabled: true,
+      },
+      {
+        id: "bo_binh_nguyen", name: "Bộ binh Nguyên Mông",
+        hp: 120, speed: 42, reward: 19, damage: 2,
+        defense: 9, resistance: 5,
+        color: "#4a3a2a", radius: 14, icon: "🪓", enabled: true,
+      },
+      {
+        id: "ky_binh_thanh", name: "Kỵ binh quân Thanh",
+        hp: 150, speed: 66, reward: 24, damage: 3,
+        defense: 5, resistance: 8,
+        color: "#8a1a1a", radius: 14, icon: "🎏", enabled: true,
+      },
+      {
+        id: "phao_thu_thanh", name: "Pháo thủ quân Thanh",
+        hp: 85, speed: 38, reward: 22, damage: 4,
+        defense: 0, resistance: 30,
+        color: "#3a3a3a", radius: 12, icon: "💣", enabled: true,
+      },
     ];
   }
 
@@ -282,6 +306,36 @@ const DataService = (() => {
         skillCooldown: 0,
         icon: "👹", color: "#2a1f3a",
         description: "Chỉ huy tối cao của đội quân xâm lược cuối cùng, trấn giữ cửa ngõ kinh thành Thăng Long.",
+        enabled: true,
+      },
+      {
+        id: "boss_toa_do", name: "Toa Đô",
+        hp: 7200, damage: 18, defense: 18, resistance: 26,
+        speed: 34, reward: 1250, rewardExp: 620,
+        skill: "Thiết Kỵ Phá Trận (+30% tốc độ đánh khi máu dưới 50%)",
+        skillCooldown: 0,
+        icon: "🗡️", color: "#3a2a1a",
+        description: "Đại tướng Nguyên Mông, tử trận ở Tây Kết trong cuộc kháng chiến năm 1285.",
+        enabled: true,
+      },
+      {
+        id: "boss_o_ma_nhi", name: "Ô Mã Nhi",
+        hp: 9000, damage: 20, defense: 20, resistance: 30,
+        speed: 30, reward: 1550, rewardExp: 760,
+        skill: "Triệu hồi thêm 5 kỵ binh Nguyên khi máu dưới 45%",
+        skillCooldown: 0,
+        icon: "🌊", color: "#1a2a3a",
+        description: "Đô đốc thuỷ quân Nguyên Mông, bị bắt sống trên sông Bạch Đằng năm 1288.",
+        enabled: true,
+      },
+      {
+        id: "boss_sam_nghi_dong", name: "Sầm Nghi Đống",
+        hp: 11000, damage: 22, defense: 20, resistance: 32,
+        speed: 32, reward: 2000, rewardExp: 950,
+        skill: "Tử thủ Đống Đa (+50% giáp khi máu dưới 30%)",
+        skillCooldown: 0,
+        icon: "🔥", color: "#8a1a1a",
+        description: "Tướng nhà Thanh trấn giữ đồn Đống Đa, thất trận trước quân Tây Sơn mùa xuân Kỷ Dậu 1789.",
         enabled: true,
       },
     ];
@@ -461,6 +515,98 @@ const DataService = (() => {
           { groups: [{ type: "tuong_giac", count: 6, interval: 0.7 }, { type: "thiet_ky", count: 10, interval: 0.45 }] },
           { groups: [{ type: "truong_giap", count: 14, interval: 0.35 }, { type: "cung_no_tong", count: 14, interval: 0.35 }] },
           { groups: [{ type: "thiet_ky", count: 14, interval: 0.4 }, { type: "tuong_giac", count: 6, interval: 0.6 }, { boss: "boss_giac_phuong_bac" }] },
+        ],
+      },
+      {
+        id: "chuong_duong", order: 7, name: "Bến Chương Dương",
+        mapName: "Bến Chương Dương",
+        description: "Trần Quang Khải phá vòng vây Nguyên Mông, mở đường thu phục Thăng Long năm 1285.",
+        background: "chuong_duong",
+        difficulty: 7,
+        unlockCondition: { type: "stage_cleared", stageId: "thang_long" },
+        rewardGold: 420, rewardExp: 240,
+        enabled: true,
+        path: [
+          { x: -40, y: 200 }, { x: 200, y: 200 }, { x: 200, y: 420 },
+          { x: 460, y: 420 }, { x: 460, y: 150 }, { x: 680, y: 150 },
+          { x: 680, y: 380 }, { x: 900, y: 380 },
+        ],
+        castle: { x: 930, y: 380 },
+        buildSpots: [
+          { x: 90, y: 300 }, { x: 300, y: 200 }, { x: 300, y: 420 },
+          { x: 460, y: 280 }, { x: 570, y: 150 }, { x: 570, y: 380 },
+          { x: 680, y: 260 }, { x: 800, y: 440 }, { x: 850, y: 250 },
+        ],
+        waves: [
+          { groups: [{ type: "bo_binh_nguyen", count: 12, interval: 0.5 }] },
+          { groups: [{ type: "ky_binh_nguyen", count: 10, interval: 0.5 }, { type: "bo_binh_nguyen", count: 6, interval: 0.6 }] },
+          { groups: [{ type: "thiet_ky", count: 10, interval: 0.5 }, { type: "cung_no_tong", count: 8, interval: 0.5 }] },
+          { groups: [{ type: "ky_binh_nguyen", count: 14, interval: 0.4 }, { type: "bo_binh_nguyen", count: 8, interval: 0.5 }] },
+          { groups: [{ type: "tuong_giac", count: 4, interval: 0.8 }, { type: "ky_binh_nguyen", count: 10, interval: 0.4 }] },
+          { groups: [{ type: "bo_binh_nguyen", count: 14, interval: 0.4 }, { type: "thiet_ky", count: 10, interval: 0.45 }] },
+          { groups: [{ type: "ky_binh_nguyen", count: 16, interval: 0.35 }, { type: "bo_binh_nguyen", count: 10, interval: 0.4 }, { boss: "boss_toa_do" }] },
+        ],
+      },
+      {
+        id: "van_kiep", order: 8, name: "Cửa biển Vạn Kiếp",
+        mapName: "Vạn Kiếp – Bạch Đằng 1288",
+        description: "Trần Hưng Đạo bày trận cọc ngầm, đánh tan thuỷ quân Nguyên Mông lần thứ ba.",
+        background: "van_kiep",
+        difficulty: 8,
+        unlockCondition: { type: "stage_cleared", stageId: "chuong_duong" },
+        rewardGold: 520, rewardExp: 300,
+        enabled: true,
+        path: [
+          { x: -40, y: 460 }, { x: 160, y: 460 }, { x: 160, y: 130 },
+          { x: 360, y: 130 }, { x: 360, y: 460 }, { x: 580, y: 460 },
+          { x: 580, y: 130 }, { x: 800, y: 130 }, { x: 800, y: 300 }, { x: 920, y: 300 },
+        ],
+        castle: { x: 940, y: 300 },
+        buildSpots: [
+          { x: 80, y: 300 }, { x: 260, y: 130 }, { x: 260, y: 460 },
+          { x: 360, y: 300 }, { x: 470, y: 460 }, { x: 470, y: 130 },
+          { x: 690, y: 130 }, { x: 690, y: 460 }, { x: 850, y: 210 },
+        ],
+        waves: [
+          { groups: [{ type: "ky_binh_nguyen", count: 14, interval: 0.45 }] },
+          { groups: [{ type: "bo_binh_nguyen", count: 12, interval: 0.5 }, { type: "cung_no_tong", count: 8, interval: 0.5 }] },
+          { groups: [{ type: "thiet_ky", count: 12, interval: 0.45 }, { type: "ky_binh_nguyen", count: 10, interval: 0.4 }] },
+          { groups: [{ type: "tuong_giac", count: 5, interval: 0.7 }, { type: "bo_binh_nguyen", count: 12, interval: 0.4 }] },
+          { groups: [{ type: "ky_binh_nguyen", count: 16, interval: 0.35 }, { type: "cung_no_tong", count: 10, interval: 0.4 }] },
+          { groups: [{ type: "thiet_ky", count: 14, interval: 0.4 }, { type: "bo_binh_nguyen", count: 14, interval: 0.35 }] },
+          { groups: [{ type: "tuong_giac", count: 6, interval: 0.6 }, { type: "ky_binh_nguyen", count: 16, interval: 0.35 }] },
+          { groups: [{ type: "bo_binh_nguyen", count: 16, interval: 0.3 }, { type: "thiet_ky", count: 14, interval: 0.35 }, { boss: "boss_o_ma_nhi" }] },
+        ],
+      },
+      {
+        id: "ngoc_hoi_dong_da", order: 9, name: "Ngọc Hồi – Đống Đa",
+        mapName: "Gò Đống Đa",
+        description: "Vua Quang Trung thần tốc tiến quân, đại phá 29 vạn quân Thanh mùa xuân Kỷ Dậu 1789.",
+        background: "dong_da",
+        difficulty: 9,
+        unlockCondition: { type: "stage_cleared", stageId: "van_kiep" },
+        rewardGold: 650, rewardExp: 380,
+        enabled: true,
+        path: [
+          { x: -40, y: 270 }, { x: 180, y: 270 }, { x: 180, y: 70 },
+          { x: 400, y: 70 }, { x: 400, y: 470 }, { x: 600, y: 470 },
+          { x: 600, y: 120 }, { x: 800, y: 120 }, { x: 800, y: 360 }, { x: 920, y: 360 },
+        ],
+        castle: { x: 940, y: 360 },
+        buildSpots: [
+          { x: 90, y: 170 }, { x: 280, y: 70 }, { x: 280, y: 470 },
+          { x: 400, y: 270 }, { x: 500, y: 470 }, { x: 500, y: 120 },
+          { x: 700, y: 120 }, { x: 700, y: 360 }, { x: 860, y: 240 },
+        ],
+        waves: [
+          { groups: [{ type: "ky_binh_thanh", count: 16, interval: 0.4 }] },
+          { groups: [{ type: "phao_thu_thanh", count: 10, interval: 0.5 }, { type: "thiet_ky", count: 8, interval: 0.5 }] },
+          { groups: [{ type: "ky_binh_thanh", count: 16, interval: 0.35 }, { type: "phao_thu_thanh", count: 10, interval: 0.45 }] },
+          { groups: [{ type: "tuong_giac", count: 6, interval: 0.6 }, { type: "ky_binh_thanh", count: 14, interval: 0.35 }] },
+          { groups: [{ type: "phao_thu_thanh", count: 14, interval: 0.4 }, { type: "thiet_ky", count: 12, interval: 0.4 }] },
+          { groups: [{ type: "ky_binh_thanh", count: 18, interval: 0.3 }, { type: "phao_thu_thanh", count: 12, interval: 0.4 }] },
+          { groups: [{ type: "tuong_giac", count: 8, interval: 0.5 }, { type: "ky_binh_thanh", count: 16, interval: 0.3 }] },
+          { groups: [{ type: "phao_thu_thanh", count: 16, interval: 0.3 }, { type: "ky_binh_thanh", count: 18, interval: 0.28 }, { boss: "boss_sam_nghi_dong" }] },
         ],
       },
     ];
@@ -811,10 +957,48 @@ const DataService = (() => {
   /* Di trú schemaVersion 2 -> 3 (Giai đoạn 3 - Combat Engine). */
   function migrateSchemaV2ToV3() {
     const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
-    if (currentVersion >= SCHEMA_VERSION) return;
+    if (currentVersion >= 3) return;
     ensureBuildingCombatFields();
-    StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
+    StorageService.set(KEYS.schemaVersion, 3);
     console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 3: thêm Critical/Armor Penetration/Effect cho công trình, thêm tháp mới, thêm khung phases/abilities cho Boss.");
+  }
+
+  /* Di trú schemaVersion 3 -> 4 (Giai đoạn 4 - thêm 3 màn chơi mới:
+     Chương Dương / Vạn Kiếp / Ngọc Hồi-Đống Đa, quân địch & boss mới).
+     Chỉ THÊM những bản ghi id còn thiếu, không đụng tới dữ liệu Admin
+     đã tuỳ chỉnh cho các bản ghi cũ. Idempotent. */
+  function migrateSchemaV3ToV4() {
+    const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
+    if (currentVersion >= SCHEMA_VERSION) return;
+
+    const enemies = list("enemies");
+    const enemyIds = new Set(enemies.map((e) => e.id));
+    for (const def of defaultEnemies()) {
+      if (!enemyIds.has(def.id)) enemies.push(def);
+    }
+    StorageService.set(KEYS.enemies, enemies);
+
+    const bosses = list("bosses");
+    const bossIds = new Set(bosses.map((b) => b.id));
+    for (const def of defaultBosses()) {
+      if (!bossIds.has(def.id)) bosses.push(def);
+    }
+    StorageService.set(KEYS.bosses, bosses);
+
+    const stages = list("stages");
+    const stageIds = new Set(stages.map((s) => s.id));
+    for (const def of defaultStages()) {
+      if (!stageIds.has(def.id)) stages.push(def);
+    }
+    StorageService.set(KEYS.stages, stages);
+
+    const config = getConfig();
+    if ((config.MAX_LEVEL || 0) < 9) {
+      setConfig(Object.assign({}, config, { MAX_LEVEL: 9 }));
+    }
+
+    StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
+    console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 4: thêm 3 màn chơi mới, quân địch & boss mới.");
   }
 
   function ensureSeeded() {
@@ -828,6 +1012,7 @@ const DataService = (() => {
     });
     migrateLegacyIfNeeded();
     migrateSchemaV2ToV3();
+    migrateSchemaV3ToV4();
     if (!StorageService.has(KEYS.schemaVersion)) {
       StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
     }
@@ -1011,6 +1196,7 @@ const DataService = (() => {
         rewardGold: stage.rewardGold,
         rewardExp: stage.rewardExp,
         enabled: stage.enabled !== false,
+        background: stage.background,
         path: stage.path,
         castle: stage.castle,
         buildSpots: stage.buildSpots,

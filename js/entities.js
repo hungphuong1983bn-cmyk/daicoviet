@@ -103,6 +103,9 @@ class Enemy {
           while (s.tickAcc >= 1 && this.alive) {
             s.tickAcc -= 1;
             this.takeDamage(s.value, { isDot: true, sourceId: s.sourceId });
+            if (typeof EffectManager !== "undefined") {
+              EffectManager.spawnStatusPuff(this.x, this.y, s.type);
+            }
           }
           break;
       }
@@ -161,6 +164,9 @@ class Enemy {
     if (this.hp <= 0 && this.alive) {
       this.alive = false;
       this.killed = true;
+      if (typeof EffectManager !== "undefined") {
+        EffectManager.spawnDeathBurst(this.x, this.y, this.def.color, this.isBoss);
+      }
     }
   }
 
@@ -177,10 +183,38 @@ class Enemy {
 
   draw(ctx, showHpBar) {
     const r = this.def.radius;
-    // thân
+    const t = (this._animT = (this._animT || Math.random() * 10) + 1 / 60);
+    const bob = this._stunned ? 0 : Math.sin(t * 8 + this.id) * 1.4;
+
+    // hào quang boss (vòng quầng đỏ mờ pulsing phía sau)
+    if (this.isBoss) {
+      const pulse = 0.55 + Math.sin(t * 3) * 0.18;
+      const glow = ctx.createRadialGradient(this.x, this.y, r * 0.4, this.x, this.y, r * 2.1);
+      glow.addColorStop(0, `rgba(232,200,115,${0.28 * pulse})`);
+      glow.addColorStop(1, "rgba(232,200,115,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, r * 2.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // bóng đổ dưới chân
     ctx.beginPath();
-    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = this.def.color;
+    ctx.ellipse(this.x, this.y + r * 0.75, r * 0.85, r * 0.32, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,0,.28)";
+    ctx.fill();
+
+    // thân (gradient để có chiều sâu thay vì fill phẳng)
+    const bodyY = this.y + bob;
+    const grad = ctx.createRadialGradient(
+      this.x - r * 0.3, bodyY - r * 0.35, r * 0.15,
+      this.x, bodyY, r * 1.15
+    );
+    grad.addColorStop(0, this._lighten(this.def.color, 28));
+    grad.addColorStop(1, this.def.color);
+    ctx.beginPath();
+    ctx.arc(this.x, bodyY, r, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
     ctx.fill();
     ctx.lineWidth = this.isBoss ? 3 : 2;
     ctx.strokeStyle = this.isBoss ? "#e8c873" : "rgba(0,0,0,.4)";
@@ -188,7 +222,7 @@ class Enemy {
     // vòng xanh khi đang bị làm chậm/đóng băng/choáng
     if (this._effectiveSpeedMult < 1 || this._stunned) {
       ctx.beginPath();
-      ctx.arc(this.x, this.y, r + 4, 0, Math.PI * 2);
+      ctx.arc(this.x, bodyY, r + 4, 0, Math.PI * 2);
       ctx.strokeStyle = this._stunned ? "rgba(232,200,115,.85)" : "rgba(120,200,230,.8)";
       ctx.lineWidth = 2;
       ctx.setLineDash([3, 3]);
@@ -199,26 +233,45 @@ class Enemy {
     ctx.font = `${r}px serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(this.def.icon, this.x, this.y);
+    ctx.fillText(this.def.icon, this.x, bodyY);
     // huy hiệu trạng thái (Burn/Freeze/Slow/Stun/Bleed) phía trên đầu
     if (this.statusEffects.length > 0) {
       ctx.font = "11px serif";
       let ix = this.x - (this.statusEffects.length - 1) * 6;
       for (const s of this.statusEffects) {
         const icon = Enemy._statusIcon(s.type);
-        if (icon) ctx.fillText(icon, ix, this.y - r - 16);
+        if (icon) ctx.fillText(icon, ix, bodyY - r - 16);
         ix += 12;
       }
     }
-    // thanh máu
+    // thanh máu (viền + gradient để trông sắc nét, chuyên nghiệp hơn)
     if (showHpBar !== false) {
       const barW = r * 2.2;
       const pct = Math.max(0, this.hp / this.maxHp);
-      ctx.fillStyle = "rgba(0,0,0,.5)";
-      ctx.fillRect(this.x - barW / 2, this.y - r - 10, barW, 5);
-      ctx.fillStyle = pct > 0.4 ? "#7bc96f" : "#c94f4f";
-      ctx.fillRect(this.x - barW / 2, this.y - r - 10, barW * pct, 5);
+      const barY = bodyY - r - 10;
+      ctx.fillStyle = "rgba(0,0,0,.55)";
+      ctx.fillRect(this.x - barW / 2 - 1, barY - 1, barW + 2, 7);
+      ctx.fillStyle = "rgba(0,0,0,.4)";
+      ctx.fillRect(this.x - barW / 2, barY, barW, 5);
+      const hpGrad = ctx.createLinearGradient(this.x - barW / 2, 0, this.x + barW / 2, 0);
+      if (pct > 0.4) { hpGrad.addColorStop(0, "#5a9e4f"); hpGrad.addColorStop(1, "#9bde6a"); }
+      else { hpGrad.addColorStop(0, "#8a2f2f"); hpGrad.addColorStop(1, "#e0655f"); }
+      ctx.fillStyle = hpGrad;
+      ctx.fillRect(this.x - barW / 2, barY, barW * pct, 5);
     }
+  }
+
+  /* Làm sáng một màu hex thêm `amt` đơn vị (dùng cho gradient thân địch/tháp) */
+  _lighten(hex, amt) {
+    if (!hex || hex[0] !== "#") return hex;
+    const num = parseInt(hex.slice(1), 16);
+    let r = (num >> 16) + amt;
+    let g = ((num >> 8) & 0xff) + amt;
+    let b = (num & 0xff) + amt;
+    r = Math.min(255, Math.max(0, r));
+    g = Math.min(255, Math.max(0, g));
+    b = Math.min(255, Math.max(0, b));
+    return `rgb(${r},${g},${b})`;
   }
 }
 
@@ -284,24 +337,64 @@ class Tower {
     const damageMult = (buff && buff.damageMult) || 1;
     projectiles.push(new Projectile(this, target, damageMult));
     this.cooldown = 1 / (this.def.fireRate * fireRateMult);
+    this._recoil = 1;
+    if (typeof EffectManager !== "undefined") {
+      const angle = Math.atan2(target.y - this.y, target.x - this.x);
+      EffectManager.spawnMuzzleFlash(
+        this.x + Math.cos(angle) * 18,
+        this.y + Math.sin(angle) * 18,
+        angle,
+        this.def.color
+      );
+    }
   }
 
   draw(ctx) {
+    // hồi phục hiệu ứng "giật lùi" nhẹ sau mỗi phát bắn để trông sống động
+    if (this._recoil === undefined) this._recoil = 0;
+    this._recoil = Math.max(0, this._recoil - 0.08);
+    const scale = 1 - this._recoil * 0.06;
+
+    // bệ tháp: bóng + vòng nền gradient thay vì khối phẳng đơn sắc
     ctx.beginPath();
-    ctx.arc(this.x, this.y, 20, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(46,33,25,.9)";
+    ctx.ellipse(this.x, this.y + 16, 22, 8, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,0,.3)";
     ctx.fill();
-    ctx.lineWidth = 2;
+
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.scale(scale, scale);
+    const baseGrad = ctx.createRadialGradient(-5, -6, 3, 0, 0, 22);
+    baseGrad.addColorStop(0, "#4a382a");
+    baseGrad.addColorStop(1, "#241a12");
+    ctx.beginPath();
+    ctx.arc(0, 0, 20, 0, Math.PI * 2);
+    ctx.fillStyle = baseGrad;
+    ctx.fill();
+    ctx.lineWidth = 2.5;
     ctx.strokeStyle = this.def.color;
     ctx.stroke();
+    // vòng thếp vàng mỏng bên trong cho cảm giác "cao cấp"
+    ctx.beginPath();
+    ctx.arc(0, 0, 16, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(201,162,74,.35)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
     ctx.font = "22px serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(this.def.icon, this.x, this.y);
+    ctx.fillText(this.def.icon, 0, 0);
+    ctx.restore();
+
     if (this.level > 1) {
-      ctx.font = "11px sans-serif";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "rgba(0,0,0,.55)";
+      ctx.fillRect(this.x - 14, this.y + 19, 28, 13);
       ctx.fillStyle = "#e8c873";
-      ctx.fillText("Lv" + this.level, this.x, this.y + 24);
+      ctx.fillText("Lv" + this.level, this.x, this.y + 26);
     }
   }
 
@@ -370,6 +463,9 @@ class Projectile {
     const finalDamage = this.baseDamage * (isCritical ? this.criticalMultiplier : 1);
     const meta = { isCritical, armorPen: this.armorPenetration, sourceId: this.sourceId };
     if (this.splashRadius > 0) {
+      if (typeof EffectManager !== "undefined") {
+        EffectManager.spawnExplosion(target.x, target.y, this.splashRadius, this.color);
+      }
       for (const e of enemies) {
         if (!e.alive) continue;
         const d = Math.hypot(e.x - target.x, e.y - target.y);
@@ -379,6 +475,9 @@ class Projectile {
         }
       }
     } else {
+      if (typeof EffectManager !== "undefined") {
+        EffectManager.spawnImpactRing(target.x, target.y, this.color, false);
+      }
       target.takeDamage(finalDamage, meta);
       this._applyEffectIfAny(target);
     }
@@ -396,9 +495,33 @@ class Projectile {
   }
 
   draw(ctx) {
+    // vệt sáng nhỏ phía sau đạn để tạo cảm giác tốc độ
+    if (this._prevX !== undefined) {
+      ctx.strokeStyle = this.color;
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(this._prevX, this._prevY);
+      ctx.lineTo(this.x, this.y);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    this._prevX = this.x;
+    this._prevY = this.y;
+
+    // quầng sáng nhẹ quanh đầu đạn
+    const glow = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, 8);
+    glow.addColorStop(0, "rgba(255,255,255,.9)");
+    glow.addColorStop(0.35, this.color);
+    glow.addColorStop(1, "rgba(255,255,255,0)");
     ctx.beginPath();
-    ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
-    ctx.fillStyle = this.color;
+    ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
+    ctx.fillStyle = glow;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, 3.2, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff8e6";
     ctx.fill();
   }
 }

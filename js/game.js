@@ -63,6 +63,7 @@ const Game = {
   newRun(levelId, heroId) {
     rebuildGameData(); // luôn lấy dữ liệu mới nhất từ Admin trước khi vào trận
     EffectManager.reset();
+    this._prevHp = undefined;
     const levelDef = GAME_DATA.levels[levelId];
     this.levelDef = levelDef;
     const config = GAME_DATA.config;
@@ -103,6 +104,7 @@ const Game = {
   loadRun(snapshot) {
     rebuildGameData();
     EffectManager.reset();
+    this._prevHp = undefined;
     const levelDef = GAME_DATA.levels[snapshot.levelId];
     this.levelDef = levelDef;
     const bonus = this._heroBonuses(snapshot.heroId);
@@ -228,6 +230,12 @@ const Game = {
 
     // cập nhật hiệu ứng hình ảnh (số sát thương, tia lửa chí mạng...)
     EffectManager.update(dt);
+
+    // rung nhẹ màn hình mỗi khi thành bị công phá
+    if (this._prevHp !== undefined && r.hp < this._prevHp) {
+      EffectManager.shakeScreen(4, 0.15);
+    }
+    this._prevHp = r.hp;
 
     // thua
     if (r.hp <= 0) {
@@ -387,8 +395,13 @@ const Game = {
     const w = GAME_DATA.config.canvasWidth;
     const h = GAME_DATA.config.canvasHeight;
     ctx.clearRect(0, 0, w, h);
+
+    const shake = this.run ? EffectManager.getShakeOffset() : { x: 0, y: 0 };
+    ctx.save();
+    if (shake.x || shake.y) ctx.translate(shake.x, shake.y);
+
     this._drawBackground(ctx, w, h);
-    if (!this.levelDef) return;
+    if (!this.levelDef) { ctx.restore(); return; }
     this._drawPath(ctx);
     this._drawBuildSpots(ctx);
     this._drawCastle(ctx);
@@ -401,7 +414,19 @@ const Game = {
       for (const p of this.run.projectiles) p.draw(ctx);
       EffectManager.draw(ctx);
     }
+    this._drawVignette(ctx, w, h);
+    ctx.restore();
     if (cfg.showFps) this._drawFps(ctx);
+  },
+
+  /* Viền tối nhẹ quanh mép khung hình - tạo chiều sâu điện ảnh,
+     giống phong cách game thương mại thay vì canvas phẳng. */
+  _drawVignette(ctx, w, h) {
+    const grad = ctx.createRadialGradient(w / 2, h / 2, h * 0.35, w / 2, h / 2, h * 0.75);
+    grad.addColorStop(0, "rgba(0,0,0,0)");
+    grad.addColorStop(1, "rgba(0,0,0,.35)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
   },
 
   _drawFps(ctx) {
@@ -413,24 +438,128 @@ const Game = {
     ctx.fillText("FPS: " + this.currentFps(), 14, 22);
   },
 
+  /* Bảng chủ đề hình nền theo từng màn chơi — mỗi thời kỳ lịch sử một
+     bầu không khí riêng, thay vì dùng chung 1 nền tĩnh cho mọi màn. */
+  _bgThemes: {
+    hoa_lu: { sky: ["#e9d9ab", "#d8c48c", "#6e8f4e", "#4d6b39"], split: 0.45, kind: "mountain" },
+    dai_la: { sky: ["#e8c9a0", "#d1a56e", "#7a5a3a", "#4a3521"], split: 0.42, kind: "city" },
+    bach_dang: { sky: ["#bfe0e6", "#8fc4d4", "#1f4a5a", "#0f2c38"], split: 0.4, kind: "water" },
+    chi_lang: { sky: ["#d9c8a8", "#b8a074", "#5c5548", "#3a352c"], split: 0.44, kind: "mountain" },
+    binh_lo: { sky: ["#c9e0d8", "#8fbfae", "#2f5d50", "#1a382f"], split: 0.4, kind: "water" },
+    thang_long: { sky: ["#f0d9a0", "#e0a860", "#7a2f2f", "#4a1a1a"], split: 0.42, kind: "city" },
+    chuong_duong: { sky: ["#cfe2ea", "#9fc0cf", "#2f4a5a", "#1a2c38"], split: 0.4, kind: "water" },
+    van_kiep: { sky: ["#a8c8d8", "#6f9fb8", "#12303f", "#081820"], split: 0.38, kind: "stakes" },
+    dong_da: { sky: ["#f0b48a", "#d1704a", "#5a1f1f", "#301010"], split: 0.4, kind: "battlefield" },
+  },
+
   _drawBackground(ctx, w, h) {
-    // nền trời - đồng lúa
+    const theme = (this.levelDef && this._bgThemes[this.levelDef.background]) || this._bgThemes.hoa_lu;
     const sky = ctx.createLinearGradient(0, 0, 0, h);
-    sky.addColorStop(0, "#e9d9ab");
-    sky.addColorStop(0.45, "#d8c48c");
-    sky.addColorStop(0.46, "#6e8f4e");
-    sky.addColorStop(1, "#4d6b39");
+    sky.addColorStop(0, theme.sky[0]);
+    sky.addColorStop(theme.split - 0.01, theme.sky[1]);
+    sky.addColorStop(theme.split, theme.sky[2]);
+    sky.addColorStop(1, theme.sky[3]);
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
 
-    // núi đá vôi cách điệu (đặc trưng Hoa Lư - Ninh Bình)
-    ctx.fillStyle = "rgba(90,95,80,.55)";
-    this._drawMountain(ctx, 60, 240, 90);
-    this._drawMountain(ctx, 220, 250, 70);
-    this._drawMountain(ctx, 850, 230, 100);
-    this._drawMountain(ctx, 700, 240, 60);
-    ctx.fillStyle = "rgba(70,75,62,.5)";
-    this._drawMountain(ctx, 500, 255, 55);
+    switch (theme.kind) {
+      case "water":
+        this._drawWater(ctx, w, h, theme.split);
+        break;
+      case "stakes":
+        this._drawWater(ctx, w, h, theme.split);
+        this._drawStakes(ctx, w, h, theme.split);
+        break;
+      case "city":
+        this._drawCitySkyline(ctx, w, h, theme.split);
+        break;
+      case "battlefield":
+        this._drawBattlefieldHaze(ctx, w, h, theme.split);
+        break;
+      default:
+        ctx.fillStyle = "rgba(90,95,80,.55)";
+        this._drawMountain(ctx, 60, h * theme.split, 90);
+        this._drawMountain(ctx, 220, h * theme.split + 10, 70);
+        this._drawMountain(ctx, 850, h * theme.split - 10, 100);
+        this._drawMountain(ctx, 700, h * theme.split, 60);
+        ctx.fillStyle = "rgba(70,75,62,.5)";
+        this._drawMountain(ctx, 500, h * theme.split + 15, 55);
+    }
+  },
+
+  _drawWater(ctx, w, h, split) {
+    const baseY = h * split;
+    ctx.strokeStyle = "rgba(255,255,255,.18)";
+    ctx.lineWidth = 2;
+    const t = performance.now() / 1000;
+    for (let row = 0; row < 5; row++) {
+      const y = baseY + 18 + row * 26;
+      if (y > h) break;
+      ctx.beginPath();
+      for (let x = -20; x <= w + 20; x += 24) {
+        const yy = y + Math.sin(x * 0.03 + t * 1.3 + row) * 3;
+        if (x === -20) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+      }
+      ctx.globalAlpha = 0.5 - row * 0.07;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  },
+
+  _drawStakes(ctx, w, h, split) {
+    // cọc gỗ nhọn cắm dưới sông, đặc trưng kế Ngô Quyền / Bạch Đằng 1288
+    const baseY = h * split;
+    ctx.fillStyle = "rgba(40,28,18,.75)";
+    const positions = [40, 130, 300, 380, 520, 610, 760, 880];
+    for (const x of positions) {
+      const y = baseY + 30 + (x % 3) * 14;
+      ctx.beginPath();
+      ctx.moveTo(x - 5, y + 22);
+      ctx.lineTo(x + 5, y + 22);
+      ctx.lineTo(x, y);
+      ctx.closePath();
+      ctx.fill();
+    }
+  },
+
+  _drawCitySkyline(ctx, w, h, split) {
+    const baseY = h * split;
+    ctx.fillStyle = "rgba(40,25,18,.6)";
+    const buildings = [
+      { x: 40, w: 60, hgt: 70 }, { x: 130, w: 40, hgt: 50 },
+      { x: 640, w: 70, hgt: 90 }, { x: 760, w: 50, hgt: 60 },
+      { x: 860, w: 55, hgt: 75 },
+    ];
+    for (const b of buildings) {
+      ctx.fillRect(b.x, baseY - b.hgt, b.w, b.hgt);
+      // mái cong kiểu đình chùa
+      ctx.beginPath();
+      ctx.moveTo(b.x - 8, baseY - b.hgt);
+      ctx.lineTo(b.x + b.w / 2, baseY - b.hgt - 16);
+      ctx.lineTo(b.x + b.w + 8, baseY - b.hgt);
+      ctx.closePath();
+      ctx.fill();
+    }
+  },
+
+  _drawBattlefieldHaze(ctx, w, h, split) {
+    // gò đất + khói súng mờ đặc trưng chiến trường Đống Đa
+    const baseY = h * split;
+    ctx.fillStyle = "rgba(60,30,20,.5)";
+    this._drawMountain(ctx, 150, baseY + 20, 65);
+    this._drawMountain(ctx, 780, baseY + 10, 75);
+    const t = performance.now() / 1000;
+    for (let i = 0; i < 4; i++) {
+      const x = (i * 260 + (t * 12) % 260) % w;
+      const y = baseY - 20 - i * 8;
+      const grad = ctx.createRadialGradient(x, y, 4, x, y, 60);
+      grad.addColorStop(0, "rgba(120,110,100,.28)");
+      grad.addColorStop(1, "rgba(120,110,100,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, 60, 0, Math.PI * 2);
+      ctx.fill();
+    }
   },
 
   _drawMountain(ctx, cx, baseY, size) {
@@ -487,24 +616,89 @@ const Game = {
 
   _drawCastle(ctx) {
     const c = this.levelDef.castle;
-    // tường thành
-    ctx.fillStyle = "#7a1f2b";
+    const t = performance.now() / 1000;
+
+    // bóng đổ nền
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y + 34, 50, 12, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,0,.3)";
+    ctx.fill();
+
+    // tường thành (gradient thay vì màu phẳng)
+    const wallGrad = ctx.createLinearGradient(c.x, c.y - 30, c.x, c.y + 30);
+    wallGrad.addColorStop(0, "#9a3040");
+    wallGrad.addColorStop(1, "#5a1620");
+    ctx.fillStyle = wallGrad;
     ctx.fillRect(c.x - 42, c.y - 30, 84, 60);
     ctx.strokeStyle = "#c9a24a";
     ctx.lineWidth = 3;
     ctx.strokeRect(c.x - 42, c.y - 30, 84, 60);
+    // đường chỉ trang trí
+    ctx.strokeStyle = "rgba(232,200,115,.4)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(c.x - 36, c.y - 24, 72, 48);
+
     // răng thành
     ctx.fillStyle = "#c9a24a";
     for (let i = -3; i <= 3; i++) {
       ctx.fillRect(c.x + i * 12 - 4, c.y - 40, 8, 12);
     }
     // cổng
-    ctx.fillStyle = "#2e2119";
+    const gateGrad = ctx.createLinearGradient(c.x - 10, c.y - 4, c.x + 10, c.y + 30);
+    gateGrad.addColorStop(0, "#3a281c");
+    gateGrad.addColorStop(1, "#1a1109");
+    ctx.fillStyle = gateGrad;
     ctx.fillRect(c.x - 10, c.y - 4, 20, 34);
-    // cờ
-    ctx.fillStyle = "#e8c873";
-    ctx.font = "26px serif";
-    ctx.textAlign = "center";
-    ctx.fillText("🏯", c.x, c.y - 46);
+    ctx.strokeStyle = "rgba(201,162,74,.5)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(c.x - 10, c.y - 4, 20, 34);
+
+    // đèn lồng le lói hai bên cổng
+    const flicker = 0.6 + Math.sin(t * 6) * 0.2;
+    for (const dx of [-22, 22]) {
+      const glow = ctx.createRadialGradient(c.x + dx, c.y + 10, 0, c.x + dx, c.y + 10, 10);
+      glow.addColorStop(0, `rgba(255,200,110,${flicker})`);
+      glow.addColorStop(1, "rgba(255,200,110,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(c.x + dx, c.y + 10, 10, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // cột cờ + lá cờ tung bay (dùng sóng sin thay vì icon tĩnh)
+    const poleX = c.x;
+    const poleTopY = c.y - 62;
+    ctx.strokeStyle = "#8a6a3a";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(poleX, c.y - 40);
+    ctx.lineTo(poleX, poleTopY);
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(poleX, poleTopY);
+    ctx.beginPath();
+    ctx.moveTo(0, -2);
+    const waveAmp = 5;
+    for (let i = 0; i <= 8; i++) {
+      const fx = i * 4.5;
+      const fy = -2 + Math.sin(t * 5 - i * 0.9) * waveAmp * (i / 8) - 12;
+      ctx.lineTo(fx, fy);
+    }
+    for (let i = 8; i >= 0; i--) {
+      const fx = i * 4.5;
+      const fy = 6 + Math.sin(t * 5 - i * 0.9) * waveAmp * (i / 8) - 12;
+      ctx.lineTo(fx, fy);
+    }
+    ctx.closePath();
+    const flagGrad = ctx.createLinearGradient(0, -12, 36, -12);
+    flagGrad.addColorStop(0, "#e8c873");
+    flagGrad.addColorStop(1, "#c9a24a");
+    ctx.fillStyle = flagGrad;
+    ctx.fill();
+    ctx.strokeStyle = "#7a1f2b";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
   },
 };
