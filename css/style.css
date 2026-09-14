@@ -224,6 +224,78 @@ html,body{
 .overlay-panel h2{margin-top:0;color:var(--vang-sang);}
 .overlay-actions{display:flex;gap:10px;justify-content:center;margin-top:16px;}
 
+/* ---------- Tiện ích ---------- */
+.hidden{display:none !important;}
+
+/* ---------- Danh sách màn chơi ---------- */
+.level-list{display:flex;flex-direction:column;gap:12px;max-height:56vh;overflow-y:auto;margin-bottom:16px;text-align:left;}
+.level-card{
+  border:1.5px solid rgba(201,162,74,.5);border-radius:10px;padding:14px 16px;
+  background:rgba(0,0,0,.18);cursor:pointer;transition:background .15s ease;
+}
+.level-card:hover{background:rgba(201,162,74,.12);}
+.level-card.locked{opacity:.55;cursor:not-allowed;}
+.level-card-head{display:flex;justify-content:space-between;align-items:center;}
+.level-name{font-size:17px;color:var(--vang-sang);font-weight:700;}
+.level-diff{color:var(--vang-dong);font-size:13px;}
+.level-desc{font-size:13px;margin:6px 0;color:var(--giay-do-dim);line-height:1.4;}
+.level-meta{display:flex;justify-content:space-between;font-size:12px;color:#c9b385;}
+.level-lock{margin-top:8px;font-size:12px;color:#e0a0a0;}
+
+/* ---------- Danh sách tướng ---------- */
+.hero-list{display:flex;flex-direction:column;gap:12px;max-height:50vh;overflow-y:auto;margin-bottom:14px;}
+.hero-card{
+  display:flex;align-items:center;gap:12px;
+  border:1.5px solid rgba(201,162,74,.5);border-radius:10px;padding:12px 14px;
+  background:rgba(0,0,0,.18);text-align:left;
+}
+.hero-card.selected{border-color:var(--vang-sang);background:rgba(201,162,74,.14);}
+.hero-icon{font-size:34px;flex:0 0 auto;}
+.hero-info{flex:1;min-width:0;}
+.hero-name{font-weight:700;color:var(--vang-sang);font-size:15px;}
+.hero-level{font-size:11px;color:#c9b385;font-weight:400;margin-left:4px;}
+.hero-desc{font-size:12px;margin:4px 0;color:var(--giay-do-dim);}
+.hero-stats{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:#c9b385;}
+.hero-action{flex:0 0 auto;}
+.hero-selected-badge{font-size:12px;color:#7bc96f;font-weight:700;}
+.menu-actions-row{display:flex;gap:10px;justify-content:center;}
+
+/* ---------- Danh sách nhiệm vụ ---------- */
+.quest-list{display:flex;flex-direction:column;gap:12px;max-height:56vh;overflow-y:auto;margin-bottom:16px;text-align:left;}
+.quest-card{
+  border:1.5px solid rgba(201,162,74,.5);border-radius:10px;padding:12px 14px;
+  background:rgba(0,0,0,.18);position:relative;
+}
+.quest-card.done{border-color:#7bc96f;}
+.quest-card.claimed{opacity:.6;}
+.quest-name{font-weight:700;color:var(--vang-sang);font-size:14px;}
+.quest-desc{font-size:12px;margin:4px 0;color:var(--giay-do-dim);}
+.quest-reward{font-size:12px;color:#c9b385;}
+.quest-action{margin-top:8px;}
+.quest-status{font-size:12px;color:#c9b385;}
+
+/* ---------- Bảng nâng cấp tháp ---------- */
+.upgrade-panel{display:flex;flex-direction:column;gap:6px;padding:4px 6px;min-width:150px;}
+.upgrade-panel .t-name{font-weight:700;color:var(--vang-sang);font-size:13px;}
+.upgrade-stats{font-size:11px;color:#c9b385;}
+.upgrade-maxed{font-size:12px;color:#7bc96f;}
+
+/* ---------- Toast ---------- */
+.toast-container{
+  position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+  display:flex;flex-direction:column;gap:8px;z-index:50;align-items:center;
+  pointer-events:none;
+}
+.toast{
+  background:linear-gradient(180deg,#3a2a1c,#241a12);
+  border:1.5px solid var(--vang-dong);color:var(--giay-do);
+  padding:10px 16px;border-radius:8px;font-size:13px;
+  box-shadow:0 8px 20px var(--shadow);
+  opacity:0;transform:translateY(10px);transition:opacity .25s ease, transform .25s ease;
+  max-width:80vw;text-align:center;
+}
+.toast.visible{opacity:1;transform:translateY(0);}
+
 /* ---------- Responsive ---------- */
 @media (max-width:640px){
   .hud-stat{font-size:12px;padding:5px 8px;min-width:0;}

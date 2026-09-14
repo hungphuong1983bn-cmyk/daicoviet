@@ -1,8 +1,21 @@
 /* =========================================================
-   GAME.JS
+   GAME.JS  (Giai đoạn 2)
    Vòng lặp chính, vẽ bản đồ, sinh quân địch, xử lý xây quân
-   thủ thành, thắng/thua, tốc độ game. Đọc dữ liệu từ data.js,
-   thao tác thực thể từ entities.js, đọc/ghi qua state.js.
+   thủ thành, thắng/thua, tốc độ game. Đọc dữ liệu từ GAME_DATA
+   (được DataService dựng lại từ dữ liệu Admin), thao tác thực thể
+   từ entities.js, đọc/ghi qua state.js.
+
+   MỚI SO VỚI PHIÊN BẢN 1:
+   - Tướng chỉ huy (hero): cộng máu thành, cộng % sát thương tháp,
+     giảm sát thương thành nhận, và mở khoá 1 kỹ năng chủ động.
+   - Kỹ năng chủ động (skill) có thể kích hoạt trong trận qua nút HUD.
+   - Boss xuất hiện ở đợt cuối của mỗi màn (waves[].groups có thể có
+     { boss: bossId } thay vì { type, count, interval }).
+   - Nâng cấp tháp (Tower.upgrade) ngay trong trận bằng vàng của trận.
+   - Nhiệm vụ (QuestService) được đánh giá sau mỗi đợt/màn/hạ Boss.
+   - Cấu hình Admin (ENEMY_SPAWN_RATE, REWARD_MULTIPLIER, debugMode,
+     showDamageNumbers, showEnemyHpBar, showFps, autoSaveEnabled)
+     thực sự ảnh hưởng tới vòng lặp và cách vẽ.
    ========================================================= */
 
 const Game = {
@@ -15,42 +28,91 @@ const Game = {
 
   _rafId: null,
   _lastTs: 0,
+  _fpsSamples: [],
 
   /* ---------------- KHỞI TẠO ---------------- */
   init(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
+    Enemy.onHit = (x, y, amount) => {
+      const cfg = GAME_DATA.config.features || {};
+      if (cfg.showDamageNumbers === false) return;
+      if (!this.run) return;
+      this.run.floatingTexts.push({ x, y, amount, life: 0.8 });
+    };
   },
 
-  /* Bắt đầu một ván mới ở màn levelId */
-  newRun(levelId) {
+  _heroBonuses(heroId) {
+    const heroDef = heroId && GAME_DATA.generals[heroId];
+    if (!heroDef) {
+      return { hpBonus: 0, damagePct: 0, defenseFlat: 0, skillDef: null, heroDef: null };
+    }
+    const player = GameState.getPlayer();
+    const level = (player && player.heroLevels && player.heroLevels[heroId]) || heroDef.level || 1;
+    const scale = 1 + 0.1 * (level - 1);
+    return {
+      hpBonus: Math.round((heroDef.hp || 0) * scale),
+      damagePct: (heroDef.damage || 0) * scale,
+      defenseFlat: Math.round((heroDef.defense || 0) * scale),
+      skillDef: heroDef.skillId ? GAME_DATA.skills[heroDef.skillId] : null,
+      heroDef,
+    };
+  },
+
+  /* Bắt đầu một ván mới ở màn levelId, với tướng heroId (tuỳ chọn) */
+  newRun(levelId, heroId) {
+    rebuildGameData(); // luôn lấy dữ liệu mới nhất từ Admin trước khi vào trận
     const levelDef = GAME_DATA.levels[levelId];
     this.levelDef = levelDef;
+    const config = GAME_DATA.config;
+    const player = GameState.getPlayer();
+    const chosenHero = heroId || (player && player.selectedHero) || null;
+    const bonus = this._heroBonuses(chosenHero);
+    const maxHp = (config.startingHP || 20) + bonus.hpBonus;
+
     this.run = {
       levelId,
-      gold: GAME_DATA.config.startingGold,
-      hp: GAME_DATA.config.startingHP,
-      maxHp: GAME_DATA.config.startingHP,
-      waveIndex: -1,           // chưa bắt đầu đợt nào
+      heroId: chosenHero,
+      gold: config.startingGold,
+      hp: maxHp,
+      maxHp,
+      towerDamageMult: 1 + bonus.damagePct / 100,
+      castleDefense: bonus.defenseFlat,
+      skillDef: bonus.skillDef,
+      skillCooldownRemaining: 0,
+      towerBuffRemaining: 0,
+      towerBuffFireRateMult: 1,
+      bossKilledThisRun: false,
+      waveIndex: -1,
       totalWaves: levelDef.waves.length,
-      status: "playing",       // playing | won | lost
+      status: "playing",
       speed: 1,
       paused: false,
       waveInProgress: false,
-      spawnQueue: [],          // hàng đợi sinh quân của đợt hiện tại
+      spawnQueue: [],
       spawnTimer: 0,
       enemies: [],
-      towers: [],              // { spotIndex, typeId }
+      towers: [],
       projectiles: [],
+      floatingTexts: [],
     };
     this._startLoop();
   },
 
   /* Khôi phục ván đã lưu (Tiếp tục) */
   loadRun(snapshot) {
+    rebuildGameData();
     const levelDef = GAME_DATA.levels[snapshot.levelId];
     this.levelDef = levelDef;
+    const bonus = this._heroBonuses(snapshot.heroId);
     this.run = Object.assign({}, snapshot, {
+      towerDamageMult: 1 + bonus.damagePct / 100,
+      castleDefense: bonus.defenseFlat,
+      skillDef: bonus.skillDef,
+      skillCooldownRemaining: 0,
+      towerBuffRemaining: 0,
+      towerBuffFireRateMult: 1,
+      bossKilledThisRun: false,
       enemies: [],
       projectiles: [],
       spawnQueue: [],
@@ -58,13 +120,13 @@ const Game = {
       waveInProgress: false,
       paused: false,
       towers: [],
+      floatingTexts: [],
     });
-    // Khôi phục lại các quân thủ thành đã xây (không khôi phục quân địch giữa đợt
-    // để tránh phức tạp - đợt sẽ được yêu cầu bắt đầu lại từ nút "Bắt đầu đợt")
     for (const t of snapshot.towers || []) {
       const spot = levelDef.buildSpots[t.spotIndex];
       const tower = new Tower(t.typeId, spot.x, spot.y);
       tower.spotIndex = t.spotIndex;
+      tower.level = t.level || 1;
       this.run.towers.push(tower);
     }
     this._startLoop();
@@ -76,6 +138,7 @@ const Game = {
     const r = this.run;
     return {
       levelId: r.levelId,
+      heroId: r.heroId,
       gold: r.gold,
       hp: r.hp,
       maxHp: r.maxHp,
@@ -83,7 +146,7 @@ const Game = {
       totalWaves: r.totalWaves,
       status: r.status,
       speed: r.speed,
-      towers: r.towers.map(t => ({ spotIndex: t.spotIndex, typeId: t.typeId })),
+      towers: r.towers.map(t => ({ spotIndex: t.spotIndex, typeId: t.typeId, level: t.level })),
     };
   },
 
@@ -97,6 +160,7 @@ const Game = {
     this._lastTs = performance.now();
     const loop = (ts) => {
       const dtReal = Math.min((ts - this._lastTs) / 1000, 0.05);
+      this._trackFps(dtReal);
       this._lastTs = ts;
       if (this.run && !this.run.paused && this.run.status === "playing") {
         const dt = dtReal * this.run.speed;
@@ -108,9 +172,20 @@ const Game = {
     this._rafId = requestAnimationFrame(loop);
   },
 
+  _trackFps(dtReal) {
+    if (dtReal <= 0) return;
+    this._fpsSamples.push(1 / dtReal);
+    if (this._fpsSamples.length > 30) this._fpsSamples.shift();
+  },
+  currentFps() {
+    if (!this._fpsSamples.length) return 0;
+    return Math.round(this._fpsSamples.reduce((a, b) => a + b, 0) / this._fpsSamples.length);
+  },
+
   /* ---------------- CẬP NHẬT ---------------- */
   update(dt) {
     const r = this.run;
+    const rewardMult = GAME_DATA.config.rewardMultiplier || 1;
 
     // sinh quân theo hàng đợi
     if (r.spawnQueue.length > 0) {
@@ -126,25 +201,41 @@ const Game = {
     for (const e of r.enemies) {
       e.update(dt);
       if (e.reachedCastle) {
-        r.hp -= e.def.damage;
+        r.hp -= Math.max(0, e.def.damage - r.castleDefense);
       }
       if (e.killed) {
-        r.gold += e.def.reward;
+        r.gold += Math.round(e.def.reward * rewardMult);
+        GameState.recordKill(1);
+        if (e.isBoss) r.bossKilledThisRun = true;
       }
     }
     r.enemies = r.enemies.filter(e => e.alive);
 
+    // buff tạm thời từ kỹ năng (vd. Trống Trận)
+    let towerBuff = { fireRateMult: 1, damageMult: r.towerDamageMult };
+    if (r.towerBuffRemaining > 0) {
+      r.towerBuffRemaining -= dt;
+      towerBuff.fireRateMult = r.towerBuffFireRateMult;
+    }
+    if (r.skillCooldownRemaining > 0) r.skillCooldownRemaining -= dt;
+
     // cập nhật tháp
-    for (const t of r.towers) t.update(dt, r.enemies, r.projectiles);
+    for (const t of r.towers) t.update(dt, r.enemies, r.projectiles, towerBuff);
 
     // cập nhật đạn
     for (const p of r.projectiles) p.update(dt, r.enemies);
     r.projectiles = r.projectiles.filter(p => p.alive);
 
+    // cập nhật số sát thương bay lên
+    for (const ft of r.floatingTexts) { ft.life -= dt; ft.y -= dt * 24; }
+    r.floatingTexts = r.floatingTexts.filter(ft => ft.life > 0);
+
     // thua
     if (r.hp <= 0) {
       r.hp = 0;
       r.status = "lost";
+      GameState.clearRunSnapshot();
+      GameState.recordRunResult(false);
       UI.onGameEnded(false);
       return;
     }
@@ -152,19 +243,37 @@ const Game = {
     // kết thúc đợt?
     if (r.waveInProgress && r.spawnQueue.length === 0 && r.enemies.length === 0) {
       r.waveInProgress = false;
-      GameState.progress.bestWave[r.levelId] = Math.max(
-        GameState.progress.bestWave[r.levelId] || 0,
-        r.waveIndex + 1
-      );
-      GameState.saveProgress();
+      const waveNumber = r.waveIndex + 1;
+      GameState.updateBestWave(r.levelId, waveNumber);
+      const waveRewardDef = GAME_DATA.rewards ? GAME_DATA.rewards.r_wave_clear : null;
+      if (waveRewardDef) GameState.addPersistentReward(waveRewardDef.gold || 0, waveRewardDef.exp || 0);
+      const completedQuests = QuestService.evaluate("WAVE_CLEARED", { waveNumber });
+      UI.onQuestsCompleted(completedQuests);
 
-      if (r.waveIndex + 1 >= r.totalWaves) {
+      if (waveNumber >= r.totalWaves) {
         r.status = "won";
         GameState.clearRunSnapshot();
+        const hpPercent = Math.round((r.hp / r.maxHp) * 100);
+        GameState.recordRunResult(true);
+        GameState.addPersistentReward(this.levelDef.rewardGold || 0, this.levelDef.rewardExp || 0);
+        const stageQuests = QuestService.evaluate("STAGE_CLEARED", { stageId: r.levelId, hpPercent });
+        let bossQuests = [];
+        if (r.bossKilledThisRun) bossQuests = QuestService.evaluate("BOSS_KILLED", {});
+        UI.onQuestsCompleted([...stageQuests, ...bossQuests]);
+        this._unlockNextStages(r.levelId);
         UI.onGameEnded(true);
       } else {
         UI.onWaveCleared();
         this.persistRun();
+      }
+    }
+  },
+
+  _unlockNextStages(clearedStageId) {
+    const stages = Object.values(GAME_DATA.levels);
+    for (const s of stages) {
+      if (s.unlockCondition && s.unlockCondition.type === "stage_cleared" && s.unlockCondition.stageId === clearedStageId) {
+        GameState.unlockStage(s.id);
       }
     }
   },
@@ -181,10 +290,19 @@ const Game = {
     r.waveIndex++;
     const wave = this.levelDef.waves[r.waveIndex];
     if (!wave) return;
+    const spawnRate = GAME_DATA.config.enemySpawnRate || 1;
     const queue = [];
     for (const group of wave.groups) {
+      if (group.boss) {
+        // Boss có thể đã bị Admin tắt (enabled:false) -> bị lọc khỏi
+        // GAME_DATA.enemyTypes. Bỏ qua an toàn thay vì làm vỡ trận.
+        if (!GAME_DATA.enemyTypes[group.boss]) continue;
+        queue.push({ type: group.boss, interval: (group.interval || 1) * spawnRate });
+        continue;
+      }
+      if (!GAME_DATA.enemyTypes[group.type]) continue; // loại địch đã bị tắt/xoá
       for (let i = 0; i < group.count; i++) {
-        queue.push({ type: group.type, interval: group.interval });
+        queue.push({ type: group.type, interval: group.interval * spawnRate });
       }
     }
     r.spawnQueue = queue;
@@ -193,7 +311,7 @@ const Game = {
     this.persistRun();
   },
 
-  /* ---------------- XÂY QUÂN THỦ THÀNH ---------------- */
+  /* ---------------- XÂY / NÂNG CẤP QUÂN THỦ THÀNH ---------------- */
   buildTower(spotIndex, typeId) {
     const r = this.run;
     const def = GAME_DATA.towerTypes[typeId];
@@ -205,6 +323,42 @@ const Game = {
     tower.spotIndex = spotIndex;
     r.towers.push(tower);
     r.gold -= def.cost;
+    this.persistRun();
+    return true;
+  },
+
+  upgradeTower(spotIndex) {
+    const r = this.run;
+    const tower = r.towers.find(t => t.spotIndex === spotIndex);
+    if (!tower) return false;
+    const cost = tower.nextUpgradeCost();
+    if (cost === null || r.gold < cost) return false;
+    tower.upgrade();
+    r.gold -= cost;
+    this.persistRun();
+    return true;
+  },
+
+  /* ---------------- KỸ NĂNG CHỦ ĐỘNG ---------------- */
+  useSkill() {
+    const r = this.run;
+    if (!r || !r.skillDef || r.skillCooldownRemaining > 0 || r.status !== "playing") return false;
+    const skill = r.skillDef;
+    switch (skill.effect) {
+      case "damage_all":
+        for (const e of r.enemies) if (e.alive) e.takeDamage(skill.damage);
+        break;
+      case "heal_castle":
+        r.hp = Math.min(r.maxHp, r.hp + skill.heal);
+        break;
+      case "buff_attack_speed":
+        r.towerBuffRemaining = skill.duration;
+        r.towerBuffFireRateMult = 1 + (skill.value || 0);
+        break;
+      default:
+        return false;
+    }
+    r.skillCooldownRemaining = skill.cooldown;
     this.persistRun();
     return true;
   },
@@ -240,11 +394,35 @@ const Game = {
     this._drawBuildSpots(ctx);
     this._drawCastle(ctx);
 
+    const cfg = GAME_DATA.config.features || {};
     if (this.run) {
+      if (cfg.debugMode) for (const t of this.run.towers) t.drawRange(ctx);
       for (const t of this.run.towers) t.draw(ctx);
-      for (const e of this.run.enemies) e.draw(ctx);
+      for (const e of this.run.enemies) e.draw(ctx, cfg.showEnemyHpBar);
       for (const p of this.run.projectiles) p.draw(ctx);
+      this._drawFloatingTexts(ctx, this.run.floatingTexts);
     }
+    if (cfg.showFps) this._drawFps(ctx);
+  },
+
+  _drawFloatingTexts(ctx, texts) {
+    ctx.textAlign = "center";
+    ctx.font = "bold 13px sans-serif";
+    for (const ft of texts) {
+      ctx.globalAlpha = Math.max(0, Math.min(1, ft.life / 0.8));
+      ctx.fillStyle = "#fff2c9";
+      ctx.fillText("-" + Math.round(ft.amount), ft.x, ft.y - 18);
+    }
+    ctx.globalAlpha = 1;
+  },
+
+  _drawFps(ctx) {
+    ctx.font = "12px monospace";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "rgba(0,0,0,.5)";
+    ctx.fillRect(8, 8, 62, 20);
+    ctx.fillStyle = "#7bc96f";
+    ctx.fillText("FPS: " + this.currentFps(), 14, 22);
   },
 
   _drawBackground(ctx, w, h) {

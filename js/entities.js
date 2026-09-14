@@ -1,8 +1,19 @@
 /* =========================================================
-   ENTITIES.JS
+   ENTITIES.JS  (Giai đoạn 2)
    Các "lớp" thực thể trong trận đấu: Địch, Quân thủ thành, Đạn.
    Chỉ chứa hành vi của từng thực thể (update/draw), không chứa
    vòng lặp game chính (nằm ở game.js).
+
+   Thay đổi so với phiên bản 1:
+   - Enemy: hỗ trợ Defense (giảm sát thương phẳng) và Resistance
+     (giảm sát thương theo %) lấy từ dữ liệu Admin, dùng chung cho cả
+     quân địch thường lẫn Boss (Boss được trộn vào enemyTypes bởi
+     DataService.buildGameData()).
+   - Enemy: có thể gọi ra "số sát thương bay lên" nếu bật cấu hình
+     showDamageNumbers (Admin > Cấu hình game), qua hook Enemy.onHit.
+   - Tower: hỗ trợ nâng cấp (level) làm tăng damage/range theo dữ
+     liệu maxLevel/upgradeCost/upgradeDamageMult của công trình, và
+     nhận thêm hệ số buff tạm thời (vd. kỹ năng Trống Trận) khi bắn.
    ========================================================= */
 
 let __entityId = 0;
@@ -10,6 +21,9 @@ function nextEntityId() { return ++__entityId; }
 
 /* ---------------- ĐỊCH ---------------- */
 class Enemy {
+  // hook toàn cục (được game.js gán) - dùng để hiện số sát thương bay lên
+  static onHit = null;
+
   constructor(typeId, path) {
     const def = GAME_DATA.enemyTypes[typeId];
     this.id = nextEntityId();
@@ -18,6 +32,9 @@ class Enemy {
     this.maxHp = def.hp;
     this.hp = def.hp;
     this.speed = def.speed;
+    this.defense = def.defense || 0;
+    this.resistance = def.resistance || 0;
+    this.isBoss = !!def.boss;
     this.path = path;
     this.wpIndex = 0;
     this.x = path[0].x;
@@ -49,22 +66,26 @@ class Enemy {
   }
 
   takeDamage(amount) {
-    this.hp -= amount;
+    let real = Math.max(0, amount - this.defense);
+    if (this.resistance > 0) real = real * (1 - this.resistance / 100);
+    real = Math.max(1, Math.round(real));
+    this.hp -= real;
+    if (Enemy.onHit) Enemy.onHit(this.x, this.y, real);
     if (this.hp <= 0 && this.alive) {
       this.alive = false;
       this.killed = true;
     }
   }
 
-  draw(ctx) {
+  draw(ctx, showHpBar) {
     const r = this.def.radius;
     // thân
     ctx.beginPath();
     ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
     ctx.fillStyle = this.def.color;
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "rgba(0,0,0,.4)";
+    ctx.lineWidth = this.isBoss ? 3 : 2;
+    ctx.strokeStyle = this.isBoss ? "#e8c873" : "rgba(0,0,0,.4)";
     ctx.stroke();
     // icon
     ctx.font = `${r}px serif`;
@@ -72,12 +93,14 @@ class Enemy {
     ctx.textBaseline = "middle";
     ctx.fillText(this.def.icon, this.x, this.y);
     // thanh máu
-    const barW = r * 2.2;
-    const pct = Math.max(0, this.hp / this.maxHp);
-    ctx.fillStyle = "rgba(0,0,0,.5)";
-    ctx.fillRect(this.x - barW / 2, this.y - r - 10, barW, 5);
-    ctx.fillStyle = pct > 0.4 ? "#7bc96f" : "#c94f4f";
-    ctx.fillRect(this.x - barW / 2, this.y - r - 10, barW * pct, 5);
+    if (showHpBar !== false) {
+      const barW = r * 2.2;
+      const pct = Math.max(0, this.hp / this.maxHp);
+      ctx.fillStyle = "rgba(0,0,0,.5)";
+      ctx.fillRect(this.x - barW / 2, this.y - r - 10, barW, 5);
+      ctx.fillStyle = pct > 0.4 ? "#7bc96f" : "#c94f4f";
+      ctx.fillRect(this.x - barW / 2, this.y - r - 10, barW * pct, 5);
+    }
   }
 }
 
@@ -92,15 +115,37 @@ class Tower {
     this.y = y;
     this.cooldown = 0;
     this.targetId = null;
+    this.level = 1;
+    this.maxLevel = def.maxLevel || 1;
+  }
+
+  /* Chỉ số hiệu dụng sau khi tính nâng cấp (level) */
+  effectiveDamage() {
+    const mult = 1 + (this.level - 1) * (this.def.upgradeDamageMult || 0);
+    return this.def.damage * mult;
+  }
+  effectiveRange() {
+    const mult = 1 + (this.level - 1) * (this.def.upgradeRangeMult || 0);
+    return this.def.range * mult;
+  }
+  nextUpgradeCost() {
+    if (this.level >= this.maxLevel) return null;
+    return Math.round((this.def.upgradeCost || 0) * this.level);
+  }
+  upgrade() {
+    if (this.level >= this.maxLevel) return false;
+    this.level += 1;
+    return true;
   }
 
   findTarget(enemies) {
     let best = null;
     let bestProgress = -1;
+    const range = this.effectiveRange();
     for (const e of enemies) {
       if (!e.alive) continue;
       const d = Math.hypot(e.x - this.x, e.y - this.y);
-      if (d <= this.def.range) {
+      if (d <= range) {
         // ưu tiên địch đi xa nhất trên đường (wpIndex cao nhất)
         if (e.wpIndex > bestProgress) {
           bestProgress = e.wpIndex;
@@ -111,17 +156,19 @@ class Tower {
     return best;
   }
 
-  update(dt, enemies, projectiles) {
+  /* buff = { fireRateMult, damageMult } áp dụng tạm thời (vd. kỹ năng) */
+  update(dt, enemies, projectiles, buff) {
     this.cooldown -= dt;
     if (this.cooldown > 0) return;
     const target = this.findTarget(enemies);
     if (!target) return;
-    projectiles.push(new Projectile(this, target));
-    this.cooldown = 1 / this.def.fireRate;
+    const fireRateMult = (buff && buff.fireRateMult) || 1;
+    const damageMult = (buff && buff.damageMult) || 1;
+    projectiles.push(new Projectile(this, target, damageMult));
+    this.cooldown = 1 / (this.def.fireRate * fireRateMult);
   }
 
   draw(ctx) {
-    // vùng tầm bắn khi cần debug (ẩn mặc định)
     ctx.beginPath();
     ctx.arc(this.x, this.y, 20, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(46,33,25,.9)";
@@ -133,11 +180,16 @@ class Tower {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(this.def.icon, this.x, this.y);
+    if (this.level > 1) {
+      ctx.font = "11px sans-serif";
+      ctx.fillStyle = "#e8c873";
+      ctx.fillText("Lv" + this.level, this.x, this.y + 24);
+    }
   }
 
   drawRange(ctx) {
     ctx.beginPath();
-    ctx.arc(this.x, this.y, this.def.range, 0, Math.PI * 2);
+    ctx.arc(this.x, this.y, this.effectiveRange(), 0, Math.PI * 2);
     ctx.fillStyle = "rgba(201,162,74,.08)";
     ctx.fill();
     ctx.strokeStyle = "rgba(201,162,74,.35)";
@@ -147,11 +199,11 @@ class Tower {
 
 /* ---------------- ĐẠN ---------------- */
 class Projectile {
-  constructor(tower, target) {
+  constructor(tower, target, damageMult) {
     this.id = nextEntityId();
     this.x = tower.x;
     this.y = tower.y;
-    this.damage = tower.def.damage;
+    this.damage = tower.effectiveDamage() * (damageMult || 1);
     this.speed = tower.def.projectileSpeed;
     this.splashRadius = tower.def.splashRadius;
     this.color = tower.def.color;

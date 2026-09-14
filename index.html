@@ -21,6 +21,15 @@
   <p class="splash-hint">Chạm để bắt đầu</p>
 </section>
 
+<!-- ================= MÀN HÌNH TÀI KHOẢN BỊ KHOÁ ================= -->
+<section id="screen-banned" class="screen">
+  <div class="menu-panel">
+    <h2 class="panel-title">🔒 Tài khoản đã bị khoá</h2>
+    <p class="panel-sub">Quản trị viên đã tạm khoá hồ sơ chơi này.</p>
+    <p style="font-size:13px;color:var(--giay-do-dim);">Nếu bạn cho rằng đây là nhầm lẫn, vui lòng liên hệ quản trị viên của trò chơi.</p>
+  </div>
+</section>
+
 <!-- ================= MÀN HÌNH MENU CHÍNH ================= -->
 <section id="screen-menu" class="screen">
   <div class="menu-panel">
@@ -29,6 +38,8 @@
     <nav class="menu-list">
       <button class="btn btn-primary" id="btn-start">Bắt đầu</button>
       <button class="btn" id="btn-continue">Tiếp tục</button>
+      <button class="btn" id="btn-menu-heroes">Tướng</button>
+      <button class="btn" id="btn-menu-quests">Nhiệm vụ</button>
       <button class="btn" id="btn-guide">Hướng dẫn</button>
       <button class="btn" id="btn-settings">Cài đặt</button>
     </nav>
@@ -41,13 +52,16 @@
   <div class="menu-panel wide">
     <h2 class="panel-title">Hướng dẫn</h2>
     <div class="guide-content">
-      <p><strong>Mục tiêu:</strong> Bảo vệ thành Hoa Lư khỏi quân của các sứ quân nổi loạn.</p>
+      <p><strong>Mục tiêu:</strong> Bảo vệ thành khỏi quân của các thế lực nổi loạn qua từng màn.</p>
       <ul>
         <li>Chạm vào <strong>ô đất trống</strong> cạnh đường đi để xây <strong>quân thủ thành</strong>.</li>
+        <li>Chạm vào <strong>tháp đã xây</strong> để <strong>nâng cấp</strong> chỉ số của nó.</li>
         <li>Mỗi loại quân tốn <strong>vàng</strong>, tiêu diệt địch để nhận thêm vàng.</li>
-        <li>Nhấn <strong>Bắt đầu đợt</strong> để thả quân địch của đợt (Wave) hiện tại.</li>
+        <li>Chọn <strong>Tướng chỉ huy</strong> trước trận để nhận chỉ số cộng thêm và một <strong>kỹ năng chủ động</strong>.</li>
+        <li>Nhấn <strong>Bắt đầu đợt</strong> để thả quân địch của đợt (Wave) hiện tại. Đợt cuối mỗi màn có <strong>Boss</strong>.</li>
         <li>Nếu địch lọt đến thành, <strong>HP thành</strong> sẽ giảm. Hết HP là thua.</li>
-        <li>Sống sót qua hết các đợt để <strong>chiến thắng</strong> màn chơi.</li>
+        <li>Sống sót qua hết các đợt để <strong>chiến thắng</strong> màn chơi và mở màn tiếp theo.</li>
+        <li>Hoàn thành <strong>Nhiệm vụ</strong> để nhận thêm vàng/kinh nghiệm dùng cho việc mở khoá Tướng.</li>
         <li>Dùng nút tốc độ <strong>1x / 2x</strong> để đẩy nhanh trận đánh.</li>
       </ul>
       <p>Tiến trình được tự động lưu lại trên trình duyệt của bạn.</p>
@@ -72,6 +86,37 @@
   </div>
 </section>
 
+<!-- ================= MÀN HÌNH CHỌN MÀN CHƠI ================= -->
+<section id="screen-levels" class="screen">
+  <div class="menu-panel wide">
+    <h2 class="panel-title">Chọn màn chơi</h2>
+    <div class="level-list" id="level-list"></div>
+    <button class="btn btn-primary" id="btn-levels-back">Quay lại</button>
+  </div>
+</section>
+
+<!-- ================= MÀN HÌNH TƯỚNG ================= -->
+<section id="screen-heroes" class="screen">
+  <div class="menu-panel wide">
+    <h2 class="panel-title">Tướng chỉ huy</h2>
+    <p class="panel-sub">Vàng: <span id="hero-gold">0</span> 🪙 · EXP: <span id="hero-exp">0</span></p>
+    <div class="hero-list" id="hero-list"></div>
+    <div class="menu-actions-row">
+      <button class="btn" id="btn-heroes-back">Quay lại</button>
+      <button class="btn btn-primary hidden" id="btn-heroes-start">Vào trận</button>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MÀN HÌNH NHIỆM VỤ ================= -->
+<section id="screen-quests" class="screen">
+  <div class="menu-panel wide">
+    <h2 class="panel-title">Nhiệm vụ</h2>
+    <div class="quest-list" id="quest-list"></div>
+    <button class="btn btn-primary" id="btn-quests-back">Quay lại</button>
+  </div>
+</section>
+
 <!-- ================= MÀN HÌNH CHƠI ================= -->
 <section id="screen-game" class="screen">
   <div class="hud">
@@ -79,6 +124,7 @@
     <div class="hud-stat hud-hp"><span class="hud-icon">🏯</span><span id="hud-hp">0</span></div>
     <div class="hud-stat hud-wave"><span class="hud-icon">⚔</span><span id="hud-wave">0/0</span></div>
     <div class="hud-actions">
+      <button class="btn btn-small hidden" id="btn-skill" title="Kỹ năng tướng">✨</button>
       <button class="btn btn-small" id="btn-speed">x1</button>
       <button class="btn btn-small" id="btn-pause">II</button>
       <button class="btn btn-small btn-exit" id="btn-exit">✕</button>
@@ -118,6 +164,12 @@
   </div>
 </section>
 
+<div id="toast-container" class="toast-container"></div>
+
+<script src="shared/storage-service.js"></script>
+<script src="shared/crypto-util.js"></script>
+<script src="shared/data-service.js"></script>
+<script src="shared/quest-service.js"></script>
 <script src="js/data.js"></script>
 <script src="js/state.js"></script>
 <script src="js/entities.js"></script>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Đăng nhập Admin – Đại Cồ Việt</title>
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="login-body">
+  <div class="login-box">
+    <div class="login-brand">
+      <div class="login-logo">☀</div>
+      <h1>ĐẠI CỒ VIỆT</h1>
+      <p>Khu vực quản trị</p>
+    </div>
+    <form id="login-form" class="login-form">
+      <div class="form-field">
+        <label class="form-label" for="login-username">Tài khoản</label>
+        <input class="form-input" type="text" id="login-username" name="username" autocomplete="username" required>
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="login-password">Mật khẩu</label>
+        <input class="form-input" type="password" id="login-password" name="password" autocomplete="current-password" required>
+      </div>
+      <p class="form-error hidden" id="login-error"></p>
+      <button type="submit" class="btn btn-primary btn-full" id="login-submit">Đăng nhập</button>
+    </form>
+    <p class="login-hint">
+      Tài khoản mặc định (chỉ dùng cho môi trường phát triển):<br>
+      <code>admin</code> / <code>Admin@123456</code><br>
+      Xem <strong>DEFAULT_ADMIN.md</strong> để biết thêm chi tiết và đổi mật khẩu ngay khi có thể.
+    </p>
+  </div>
+
+  <script src="../shared/storage-service.js"></script>
+  <script src="../shared/crypto-util.js"></script>
+  <script src="../shared/data-service.js"></script>
+  <script src="../shared/auth-service.js"></script>
+  <script src="js/login.js"></script>
+</body>
+</html>

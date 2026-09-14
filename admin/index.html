@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard – Đại Cồ Việt</title>
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+  <div class="admin-shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="sidebar-logo">☀</span>
+        <div>
+          <div class="sidebar-title">ĐẠI CỒ VIỆT</div>
+          <div class="sidebar-sub">Admin Dashboard</div>
+        </div>
+      </div>
+      <nav id="sidebar-nav" class="sidebar-nav"></nav>
+    </aside>
+
+    <div class="main-col">
+      <header class="topbar">
+        <h1 id="content-title" class="content-title">Tổng quan</h1>
+        <div class="topbar-actions">
+          <div class="topbar-user">
+            <span id="topbar-username">-</span>
+            <span class="topbar-role" id="topbar-role">-</span>
+          </div>
+          <button class="btn btn-small" id="btn-manage-accounts">Quản lý tài khoản</button>
+          <button class="btn btn-small" id="btn-change-password">Đổi mật khẩu</button>
+          <button class="btn btn-small btn-danger" id="btn-logout">Đăng xuất</button>
+        </div>
+      </header>
+      <main id="content-body" class="content-body"></main>
+    </div>
+  </div>
+
+  <div id="modal-root" class="modal-root"></div>
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="../shared/storage-service.js"></script>
+  <script src="../shared/crypto-util.js"></script>
+  <script src="../shared/data-service.js"></script>
+  <script src="../shared/auth-service.js"></script>
+  <script src="../shared/admin-service.js"></script>
+  <script src="../js/data.js"></script>
+  <script src="js/schemas.js"></script>
+  <script src="js/components.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

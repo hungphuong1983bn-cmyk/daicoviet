@@ -1,69 +1,163 @@
 /* =========================================================
-   STATE.JS
-   Quản lý trạng thái tổng thể của game + lưu/đọc localStorage.
-   Không chứa logic vẽ hay va chạm (nằm ở game.js).
+   STATE.JS  (Giai đoạn 2)
+   Quản lý trạng thái tổng thể của game trong một phiên chơi + đọc/ghi
+   tiến trình dài hạn của người chơi.
+
+   Từ Giai đoạn 2, "tiến trình dài hạn" (level đã mở, level cao nhất
+   đã qua, cài đặt, vàng bền vững, tướng sở hữu, nhiệm vụ...) không
+   còn nằm trong 1 key JSON tự do như phiên bản 1 nữa, mà là MỘT BẢN
+   GHI trong collection "players" của DataService — cùng một nguồn dữ
+   liệu mà Admin nhìn thấy ở mục "Người chơi".
+
+   Vì trò chơi hiện tại chưa có hệ thống tài khoản/đăng nhập cho
+   NGƯỜI CHƠI (khác với đăng nhập ADMIN ở /admin), toàn bộ trình
+   duyệt hiện tại chỉ có một hồ sơ chơi duy nhất, id cố định
+   "local_player". Đây là giới hạn của kiến trúc frontend-only, xem
+   thêm ở README.md mục "Hướng dẫn chuyển sang backend".
+
+   GameState vẫn giữ nguyên các hàm public mà js/game.js và js/ui.js
+   của phiên bản 1 đã gọi (loadProgress, saveProgress, resetProgress,
+   hasSavedGame, saveRun, loadRunSnapshot, clearRunSnapshot) để không
+   phải sửa lại các file đó.
    ========================================================= */
 
-const STORAGE_KEYS = {
-  progress: "dcv_progress_v1",   // tiến trình dài hạn (đã mở khoá, cài đặt)
-  saveGame: "dcv_savegame_v1",   // ván đang chơi dở (để "Tiếp tục")
-};
+const LOCAL_PLAYER_ID = "local_player";
+const RUN_SNAPSHOT_KEY = "runSnapshot";
 
 const GameState = {
-
-  /* ----- tiến trình dài hạn ----- */
+  /* ----- tiến trình dài hạn, hình dạng tương thích phiên bản 1 ----- */
   progress: {
     unlockedLevels: ["hoa_lu"],
-    bestWave: {},          // { levelId: số đợt cao nhất từng qua }
+    bestWave: {},
     settings: { sound: true },
   },
 
-  /* ----- trạng thái ván đang chơi ----- */
-  run: null, // sẽ được khởi tạo bởi Game.newRun()
+  run: null,
+
+  /* ---------- Truy cập hồ sơ người chơi (Giai đoạn 2) ---------- */
+  getPlayer() {
+    return DataService.get("players", LOCAL_PLAYER_ID);
+  },
+
+  _syncProgressFromPlayer(player) {
+    if (!player) return;
+    this.progress.unlockedLevels = player.unlockedStages || ["hoa_lu"];
+    this.progress.bestWave = player.bestWave || {};
+    this.progress.settings = player.settings || { sound: true };
+  },
 
   /* ---------- Tiến trình dài hạn ---------- */
   loadProgress() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEYS.progress);
-      if (raw) this.progress = Object.assign(this.progress, JSON.parse(raw));
-    } catch (e) { console.warn("Không đọc được tiến trình:", e); }
+    let player = this.getPlayer();
+    if (!player) {
+      // Không nên xảy ra vì DataService.init() đã seed sẵn, nhưng đề
+      // phòng trường hợp bị xoá thủ công.
+      const fresh = DataService.defaultAll().players[0];
+      player = DataService.create("players", fresh);
+    }
+    this._syncProgressFromPlayer(player);
   },
 
   saveProgress() {
-    try {
-      localStorage.setItem(STORAGE_KEYS.progress, JSON.stringify(this.progress));
-    } catch (e) { console.warn("Không lưu được tiến trình:", e); }
+    const player = this.getPlayer();
+    if (!player) return;
+    DataService.update("players", LOCAL_PLAYER_ID, {
+      unlockedStages: this.progress.unlockedLevels,
+      bestWave: this.progress.bestWave,
+      settings: this.progress.settings,
+    });
   },
 
   resetProgress() {
-    localStorage.removeItem(STORAGE_KEYS.progress);
-    localStorage.removeItem(STORAGE_KEYS.saveGame);
-    this.progress = {
-      unlockedLevels: ["hoa_lu"],
-      bestWave: {},
-      settings: { sound: true },
-    };
+    const fresh = DataService.defaultAll().players[0];
+    fresh.id = LOCAL_PLAYER_ID;
+    DataService.replaceAll(
+      "players",
+      DataService.list("players").map((p) => (p.id === LOCAL_PLAYER_ID ? fresh : p))
+    );
+    StorageService.remove(RUN_SNAPSHOT_KEY);
+    this._syncProgressFromPlayer(fresh);
   },
 
-  /* ---------- Ván chơi dở (Continue) ---------- */
+  /* ---------- Vàng bền vững / EXP / tướng (dùng cho màn Tướng) ---------- */
+  addPersistentReward(gold, exp) {
+    const player = this.getPlayer();
+    if (!player) return;
+    const config = DataService.getConfig();
+    const mult = config.REWARD_MULTIPLIER || 1;
+    const newExp = player.exp + Math.round((exp || 0) * mult);
+    const maxLevel = config.MAX_LEVEL || 10;
+    // Công thức lên cấp đơn giản: mỗi cấp cần 100 * cấp hiện tại EXP.
+    let level = player.level;
+    let expLeft = newExp;
+    let needed = level * 100;
+    while (expLeft >= needed && level < maxLevel) {
+      expLeft -= needed;
+      level += 1;
+      needed = level * 100;
+    }
+    DataService.update("players", player.id, {
+      gold: player.gold + Math.round((gold || 0) * mult),
+      exp: expLeft,
+      level,
+    });
+  },
+
+  recordKill(count = 1) {
+    const player = this.getPlayer();
+    if (!player) return;
+    const stats = Object.assign({ totalKills: 0, totalRuns: 0, wins: 0, losses: 0 }, player.stats);
+    stats.totalKills += count;
+    DataService.update("players", player.id, { stats });
+  },
+
+  recordRunResult(won) {
+    const player = this.getPlayer();
+    if (!player) return;
+    const stats = Object.assign({ totalKills: 0, totalRuns: 0, wins: 0, losses: 0 }, player.stats);
+    stats.totalRuns += 1;
+    if (won) stats.wins += 1; else stats.losses += 1;
+    DataService.update("players", player.id, { stats });
+  },
+
+  unlockStage(stageId) {
+    const player = this.getPlayer();
+    if (!player) return;
+    if (!player.unlockedStages.includes(stageId)) {
+      const unlockedStages = [...player.unlockedStages, stageId];
+      DataService.update("players", player.id, { unlockedStages });
+      this.progress.unlockedLevels = unlockedStages;
+    }
+  },
+
+  updateBestWave(levelId, waveNumber) {
+    const player = this.getPlayer();
+    if (!player) return;
+    const bestWave = Object.assign({}, player.bestWave);
+    bestWave[levelId] = Math.max(bestWave[levelId] || 0, waveNumber);
+    DataService.update("players", player.id, { bestWave });
+    this.progress.bestWave = bestWave;
+  },
+
+  /* ---------- Ván chơi dở (Continue) ----------
+     Đây là trạng thái NGẮN HẠN của một ván đang đánh dở, khác với
+     tiến trình dài hạn ở trên nên KHÔNG lưu trong collection
+     "players" (Admin không cần thấy/sửa cái này). */
   hasSavedGame() {
-    return !!localStorage.getItem(STORAGE_KEYS.saveGame);
+    return StorageService.has(RUN_SNAPSHOT_KEY);
   },
 
   saveRun(runSnapshot) {
-    try {
-      localStorage.setItem(STORAGE_KEYS.saveGame, JSON.stringify(runSnapshot));
-    } catch (e) { console.warn("Không lưu được ván chơi:", e); }
+    const config = DataService.getConfig();
+    if (config.features && config.features.autoSaveEnabled === false) return;
+    StorageService.set(RUN_SNAPSHOT_KEY, runSnapshot);
   },
 
   loadRunSnapshot() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEYS.saveGame);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) { return null; }
+    return StorageService.get(RUN_SNAPSHOT_KEY, null);
   },
 
   clearRunSnapshot() {
-    localStorage.removeItem(STORAGE_KEYS.saveGame);
+    StorageService.remove(RUN_SNAPSHOT_KEY);
   },
 };
