@@ -135,6 +135,25 @@ const Components = (() => {
     return values;
   }
 
+  /* Kiểm tra ràng buộc min/max khai báo trên field schema (vd. HP >= 0,
+     Critical Chance <= 100...). Trả về thông báo lỗi tiếng Việt đầu tiên
+     gặp phải, hoặc null nếu hợp lệ. Không bao giờ để giá trị sai lọt vào
+     dữ liệu game và làm engine crash lúc chơi. */
+  function validateFields(fields, values) {
+    for (const f of fields) {
+      if (f.type !== "number") continue;
+      const v = values[f.key];
+      if (v === undefined || v === null || v === "") continue;
+      if (f.min !== undefined && v < f.min) {
+        return `"${f.label}" phải >= ${f.min} (đang nhập ${v}).`;
+      }
+      if (f.max !== undefined && v > f.max) {
+        return `"${f.label}" phải <= ${f.max} (đang nhập ${v}).`;
+      }
+    }
+    return null;
+  }
+
   function openFormModal({ title, fields, initialValues = {}, onSubmit, isEdit = false }) {
     const root = _modalRoot();
     root.classList.add("open");
@@ -158,6 +177,12 @@ const Components = (() => {
       ev.preventDefault();
       const values = readForm(fields, form);
       const errorEl = root.querySelector("#form-error");
+      const validationError = validateFields(fields, values);
+      if (validationError) {
+        errorEl.textContent = validationError;
+        errorEl.classList.remove("hidden");
+        return;
+      }
       try {
         await onSubmit(values);
         closeModal();

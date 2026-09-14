@@ -34,11 +34,11 @@ const Game = {
   init(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
-    Enemy.onHit = (x, y, amount) => {
+    Enemy.onHit = (x, y, amount, isCritical) => {
       const cfg = GAME_DATA.config.features || {};
       if (cfg.showDamageNumbers === false) return;
       if (!this.run) return;
-      this.run.floatingTexts.push({ x, y, amount, life: 0.8 });
+      EffectManager.spawnDamageNumber(x, y, amount, isCritical);
     };
   },
 
@@ -62,6 +62,7 @@ const Game = {
   /* Bắt đầu một ván mới ở màn levelId, với tướng heroId (tuỳ chọn) */
   newRun(levelId, heroId) {
     rebuildGameData(); // luôn lấy dữ liệu mới nhất từ Admin trước khi vào trận
+    EffectManager.reset();
     const levelDef = GAME_DATA.levels[levelId];
     this.levelDef = levelDef;
     const config = GAME_DATA.config;
@@ -94,7 +95,6 @@ const Game = {
       enemies: [],
       towers: [],
       projectiles: [],
-      floatingTexts: [],
     };
     this._startLoop();
   },
@@ -102,6 +102,7 @@ const Game = {
   /* Khôi phục ván đã lưu (Tiếp tục) */
   loadRun(snapshot) {
     rebuildGameData();
+    EffectManager.reset();
     const levelDef = GAME_DATA.levels[snapshot.levelId];
     this.levelDef = levelDef;
     const bonus = this._heroBonuses(snapshot.heroId);
@@ -120,7 +121,6 @@ const Game = {
       waveInProgress: false,
       paused: false,
       towers: [],
-      floatingTexts: [],
     });
     for (const t of snapshot.towers || []) {
       const spot = levelDef.buildSpots[t.spotIndex];
@@ -226,9 +226,8 @@ const Game = {
     for (const p of r.projectiles) p.update(dt, r.enemies);
     r.projectiles = r.projectiles.filter(p => p.alive);
 
-    // cập nhật số sát thương bay lên
-    for (const ft of r.floatingTexts) { ft.life -= dt; ft.y -= dt * 24; }
-    r.floatingTexts = r.floatingTexts.filter(ft => ft.life > 0);
+    // cập nhật hiệu ứng hình ảnh (số sát thương, tia lửa chí mạng...)
+    EffectManager.update(dt);
 
     // thua
     if (r.hp <= 0) {
@@ -400,20 +399,9 @@ const Game = {
       for (const t of this.run.towers) t.draw(ctx);
       for (const e of this.run.enemies) e.draw(ctx, cfg.showEnemyHpBar);
       for (const p of this.run.projectiles) p.draw(ctx);
-      this._drawFloatingTexts(ctx, this.run.floatingTexts);
+      EffectManager.draw(ctx);
     }
     if (cfg.showFps) this._drawFps(ctx);
-  },
-
-  _drawFloatingTexts(ctx, texts) {
-    ctx.textAlign = "center";
-    ctx.font = "bold 13px sans-serif";
-    for (const ft of texts) {
-      ctx.globalAlpha = Math.max(0, Math.min(1, ft.life / 0.8));
-      ctx.fillStyle = "#fff2c9";
-      ctx.fillText("-" + Math.round(ft.amount), ft.x, ft.y - 18);
-    }
-    ctx.globalAlpha = 1;
   },
 
   _drawFps(ctx) {

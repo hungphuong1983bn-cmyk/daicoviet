@@ -41,26 +41,82 @@ class Enemy {
     this.y = path[0].y;
     this.alive = true;
     this.reachedCastle = false;
-    this._slowMultiplier = 1; // 1 = tốc độ bình thường, <1 = đang bị làm chậm
-    this._slowTimer = 0;
+    /* Hệ thống trạng thái chung (Giai đoạn 3): slow/freeze/stun/burn/bleed.
+       Mỗi phần tử: { type, value, duration, timer, tickAcc, sourceId }.
+       Không cộng dồn vô hạn: cùng loại chỉ giữ giá trị/thời lượng cao hơn
+       (refresh), không xếp chồng nhiều bản sao cùng loại. */
+    this.statusEffects = [];
+    this._effectiveSpeedMult = 1;
+    this._stunned = false;
   }
 
-  /* Gọi bởi Projectile khi trúng đạn từ tháp có slowFactor (vd. Bẫy cọc nhọn).
-     multiplier: hệ số còn lại của tốc độ (vd. 0.65 = giảm 35%).
-     Không cộng dồn chồng chéo: chỉ giữ hiệu ứng mạnh/lâu hơn hiện tại. */
-  applySlow(multiplier, duration) {
-    if (multiplier < this._slowMultiplier || duration > this._slowTimer) {
-      this._slowMultiplier = multiplier;
-      this._slowTimer = duration;
+  /* API hợp nhất cho mọi hiệu ứng trạng thái tháp/kỹ năng gây ra.
+     effect = { type: "slow"|"freeze"|"stun"|"burn"|"bleed", value, duration, sourceId } */
+  applyStatusEffect(effect) {
+    if (!this.alive || !effect || !effect.type || effect.type === "none") return;
+    const existing = this.statusEffects.find((s) => s.type === effect.type);
+    if (existing) {
+      existing.value = Math.max(existing.value, effect.value || 0);
+      existing.duration = Math.max(existing.duration, effect.duration || 0);
+      existing.timer = existing.duration;
+    } else {
+      this.statusEffects.push({
+        type: effect.type,
+        value: effect.value || 0,
+        duration: effect.duration || 0,
+        timer: effect.duration || 0,
+        tickAcc: 0,
+        sourceId: effect.sourceId || null,
+      });
     }
+  }
+
+  /* Tương thích ngược: mã cũ có thể còn gọi applySlow trực tiếp. */
+  applySlow(multiplier, duration) {
+    this.applyStatusEffect({ type: "slow", value: 1 - multiplier, duration });
+  }
+
+  hasStatus(type) {
+    return this.statusEffects.some((s) => s.type === type);
+  }
+
+  _processStatusEffects(dt) {
+    let speedMult = 1;
+    let stunned = false;
+    for (let i = this.statusEffects.length - 1; i >= 0; i--) {
+      const s = this.statusEffects[i];
+      s.timer -= dt;
+      switch (s.type) {
+        case "slow":
+          speedMult = Math.min(speedMult, Math.max(0, 1 - s.value));
+          break;
+        case "freeze":
+          speedMult = 0;
+          break;
+        case "stun":
+          stunned = true;
+          speedMult = 0;
+          break;
+        case "burn":
+        case "bleed":
+          s.tickAcc += dt;
+          while (s.tickAcc >= 1 && this.alive) {
+            s.tickAcc -= 1;
+            this.takeDamage(s.value, { isDot: true, sourceId: s.sourceId });
+          }
+          break;
+      }
+      if (s.timer <= 0) this.statusEffects.splice(i, 1);
+    }
+    this._effectiveSpeedMult = Math.max(0, speedMult);
+    this._stunned = stunned;
   }
 
   update(dt) {
     if (!this.alive) return;
-    if (this._slowTimer > 0) {
-      this._slowTimer -= dt;
-      if (this._slowTimer <= 0) { this._slowTimer = 0; this._slowMultiplier = 1; }
-    }
+    this._processStatusEffects(dt);
+    if (!this.alive) return; // DOT (burn/bleed) có thể vừa giết địch
+    if (this._stunned) return; // đứng yên hoàn toàn khi bị Stun
     const target = this.path[this.wpIndex + 1];
     if (!target) {
       this.reachedCastle = true;
@@ -70,7 +126,7 @@ class Enemy {
     const dx = target.x - this.x;
     const dy = target.y - this.y;
     const dist = Math.hypot(dx, dy);
-    const step = this.speed * this._slowMultiplier * dt;
+    const step = this.speed * this._effectiveSpeedMult * dt;
     if (step >= dist) {
       this.x = target.x;
       this.y = target.y;
@@ -81,15 +137,41 @@ class Enemy {
     }
   }
 
-  takeDamage(amount) {
-    let real = Math.max(0, amount - this.defense);
-    if (this.resistance > 0) real = real * (1 - this.resistance / 100);
+  /* Pipeline sát thương thật (Giai đoạn 3):
+       amount (đã gồm Hero% + Level tháp + Critical, tính ở Projectile)
+         -> Armor Penetration (giảm Defense hiệu dụng)
+         -> Defense (trừ phẳng)
+         -> Resistance (giảm theo %)
+         -> Sát thương cuối cùng
+     meta = { isCritical, armorPen, isDot, sourceId }
+     Sát thương theo thời gian (Burn/Bleed) bỏ qua Defense/Resistance,
+     đúng quy ước Tower Defense phổ biến, để hiệu ứng luôn có tác dụng
+     kể cả lên địch giáp dày. */
+  takeDamage(amount, meta = {}) {
+    if (!this.alive) return;
+    let real = amount;
+    if (!meta.isDot) {
+      const effectiveDefense = Math.max(0, this.defense * (1 - (meta.armorPen || 0) / 100));
+      real = Math.max(0, amount - effectiveDefense);
+      if (this.resistance > 0) real = real * (1 - this.resistance / 100);
+    }
     real = Math.max(1, Math.round(real));
     this.hp -= real;
-    if (Enemy.onHit) Enemy.onHit(this.x, this.y, real);
+    if (Enemy.onHit) Enemy.onHit(this.x, this.y, real, !!meta.isCritical);
     if (this.hp <= 0 && this.alive) {
       this.alive = false;
       this.killed = true;
+    }
+  }
+
+  static _statusIcon(type) {
+    switch (type) {
+      case "burn": return "🔥";
+      case "bleed": return "🩸";
+      case "freeze": return "❄️";
+      case "stun": return "⚡";
+      case "slow": return "🐌";
+      default: return "";
     }
   }
 
@@ -103,11 +185,11 @@ class Enemy {
     ctx.lineWidth = this.isBoss ? 3 : 2;
     ctx.strokeStyle = this.isBoss ? "#e8c873" : "rgba(0,0,0,.4)";
     ctx.stroke();
-    // vòng xanh khi đang bị làm chậm (Bẫy cọc nhọn...)
-    if (this._slowTimer > 0) {
+    // vòng xanh khi đang bị làm chậm/đóng băng/choáng
+    if (this._effectiveSpeedMult < 1 || this._stunned) {
       ctx.beginPath();
       ctx.arc(this.x, this.y, r + 4, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(120,200,230,.8)";
+      ctx.strokeStyle = this._stunned ? "rgba(232,200,115,.85)" : "rgba(120,200,230,.8)";
       ctx.lineWidth = 2;
       ctx.setLineDash([3, 3]);
       ctx.stroke();
@@ -118,6 +200,16 @@ class Enemy {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(this.def.icon, this.x, this.y);
+    // huy hiệu trạng thái (Burn/Freeze/Slow/Stun/Bleed) phía trên đầu
+    if (this.statusEffects.length > 0) {
+      ctx.font = "11px serif";
+      let ix = this.x - (this.statusEffects.length - 1) * 6;
+      for (const s of this.statusEffects) {
+        const icon = Enemy._statusIcon(s.type);
+        if (icon) ctx.fillText(icon, ix, this.y - r - 16);
+        ix += 12;
+      }
+    }
     // thanh máu
     if (showHpBar !== false) {
       const barW = r * 2.2;
@@ -229,14 +321,32 @@ class Projectile {
     this.id = nextEntityId();
     this.x = tower.x;
     this.y = tower.y;
-    this.damage = tower.effectiveDamage() * (damageMult || 1);
+    this.baseDamage = tower.effectiveDamage() * (damageMult || 1);
     this.speed = tower.def.projectileSpeed;
-    this.splashRadius = tower.def.splashRadius;
-    this.slowFactor = tower.def.slowFactor || 0;
-    this.slowDuration = tower.def.slowDuration || 0;
+    this.splashRadius = tower.def.splashRadius || 0;
     this.color = tower.def.color;
     this.targetId = target.id;
     this.alive = true;
+
+    /* Combat Engine (Giai đoạn 3): Critical + Armor Penetration + hiệu ứng
+       trạng thái thống nhất. Tương thích ngược với dữ liệu cũ (chỉ có
+       slowFactor/slowDuration, chưa qua migration) bằng cách suy ra
+       effectType = "slow" nếu effectType chưa được định nghĩa. */
+    this.criticalChance = tower.def.criticalChance || 0;
+    this.criticalMultiplier = tower.def.criticalMultiplier || 1.5;
+    this.armorPenetration = tower.def.armorPenetration || 0;
+    let effType = tower.def.effectType;
+    let effValue = tower.def.effectValue;
+    let effDuration = tower.def.effectDuration;
+    if ((effType === undefined || effType === null) && tower.def.slowFactor) {
+      effType = "slow";
+      effValue = tower.def.slowFactor;
+      effDuration = tower.def.slowDuration || 2;
+    }
+    this.effectType = effType && effType !== "none" ? effType : null;
+    this.effectValue = effValue || 0;
+    this.effectDuration = effDuration || 0;
+    this.sourceId = tower.id;
   }
 
   update(dt, enemies) {
@@ -256,24 +366,32 @@ class Projectile {
 
   hit(target, enemies) {
     this.alive = false;
+    const isCritical = Math.random() * 100 < this.criticalChance;
+    const finalDamage = this.baseDamage * (isCritical ? this.criticalMultiplier : 1);
+    const meta = { isCritical, armorPen: this.armorPenetration, sourceId: this.sourceId };
     if (this.splashRadius > 0) {
       for (const e of enemies) {
         if (!e.alive) continue;
         const d = Math.hypot(e.x - target.x, e.y - target.y);
         if (d <= this.splashRadius) {
-          e.takeDamage(this.damage);
-          this._applySlowIfAny(e);
+          e.takeDamage(finalDamage, meta);
+          this._applyEffectIfAny(e);
         }
       }
     } else {
-      target.takeDamage(this.damage);
-      this._applySlowIfAny(target);
+      target.takeDamage(finalDamage, meta);
+      this._applyEffectIfAny(target);
     }
   }
 
-  _applySlowIfAny(enemy) {
-    if (this.slowFactor > 0 && enemy.alive) {
-      enemy.applySlow(1 - this.slowFactor, this.slowDuration);
+  _applyEffectIfAny(enemy) {
+    if (this.effectType && enemy.alive) {
+      enemy.applyStatusEffect({
+        type: this.effectType,
+        value: this.effectValue,
+        duration: this.effectDuration,
+        sourceId: this.sourceId,
+      });
     }
   }
 

@@ -524,6 +524,7 @@ const UI = {
       opt.className = "tower-option" + (canAfford ? "" : " disabled");
       opt.innerHTML = `<span class="t-icon">${def.icon}</span>
                         <span class="t-name">${def.name}</span>
+                        <span class="t-stats">DMG ${Math.round(def.damage)} · TẦM ${Math.round(def.range)} · TĐ ${def.fireRate}${def.criticalChance ? " · Chí mạng " + def.criticalChance + "%" : ""}</span>
                         <span class="t-cost">${def.cost} 🪙</span>`;
       opt.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -554,9 +555,13 @@ const UI = {
         <div class="upgrade-maxed">Đã đạt cấp tối đa</div>`;
     } else {
       const canAfford = Game.run.gold >= cost;
+      const critLine = tower.def.criticalChance
+        ? `<div class="upgrade-stats">Chí mạng ${tower.def.criticalChance}% (×${tower.def.criticalMultiplier})</div>`
+        : "";
       info.innerHTML = `
         <div class="t-name">${tower.def.name} · Lv${tower.level}</div>
         <div class="upgrade-stats">DMG ${Math.round(tower.effectiveDamage())} · Tầm ${Math.round(tower.effectiveRange())}</div>
+        ${critLine}
         <button class="btn btn-small btn-primary" id="btn-do-upgrade" ${canAfford ? "" : "disabled"}>
           Nâng cấp (${cost} 🪙)
         </button>`;

@@ -36,7 +36,7 @@ const DataService = (() => {
     adminLogs: "collection:adminLogs",
   };
 
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
 
   /* ---------------------------------------------------------
      DỮ LIỆU MẶC ĐỊNH (seed)
@@ -74,28 +74,34 @@ const DataService = (() => {
     return [
       {
         id: "cung_thu", name: "Cung thủ", nameVi: "Cung thủ",
-        description: "Bắn xa, sát thương vừa phải.",
+        description: "Bắn xa, sát thương vừa phải, tốc bắn nhanh.",
         icon: "🏹", color: "#c9a24a",
         cost: 50, damage: 12, range: 130, fireRate: 1.1,
         projectileSpeed: 420, splashRadius: 0,
+        criticalChance: 10, criticalMultiplier: 1.8, armorPenetration: 0,
+        effectType: "none", effectValue: 0, effectDuration: 0,
         maxLevel: 5, upgradeCost: 40, upgradeDamageMult: 0.32, upgradeRangeMult: 0.07,
         enabled: true,
       },
       {
         id: "no_than", name: "Nỏ thần", nameVi: "Nỏ thần",
-        description: "Sát thương lớn, bắn chậm.",
+        description: "Sát thương lớn, xuyên một phần giáp, bắn chậm.",
         icon: "🎯", color: "#2f5d50",
         cost: 100, damage: 30, range: 160, fireRate: 0.7,
         projectileSpeed: 520, splashRadius: 0,
+        criticalChance: 18, criticalMultiplier: 2.2, armorPenetration: 35,
+        effectType: "none", effectValue: 0, effectDuration: 0,
         maxLevel: 5, upgradeCost: 75, upgradeDamageMult: 0.36, upgradeRangeMult: 0.07,
         enabled: true,
       },
       {
         id: "voi_chien", name: "Voi chiến", nameVi: "Voi chiến",
-        description: "Sát thương lan toả diện rộng.",
+        description: "Sát thương lan toả diện rộng, đắt nhưng dọn đám đông tốt.",
         icon: "🐘", color: "#7a1f2b",
         cost: 130, damage: 16, range: 100, fireRate: 0.8,
         projectileSpeed: 300, splashRadius: 45,
+        criticalChance: 6, criticalMultiplier: 1.5, armorPenetration: 0,
+        effectType: "none", effectValue: 0, effectDuration: 0,
         maxLevel: 5, upgradeCost: 95, upgradeDamageMult: 0.28, upgradeRangeMult: 0.05,
         enabled: true,
       },
@@ -105,17 +111,65 @@ const DataService = (() => {
         icon: "🪵", color: "#6b4a2f",
         cost: 70, damage: 8, range: 95, fireRate: 1.4,
         projectileSpeed: 520, splashRadius: 0,
-        slowFactor: 0.35, slowDuration: 2.5,
+        criticalChance: 4, criticalMultiplier: 1.5, armorPenetration: 0,
+        effectType: "slow", effectValue: 0.35, effectDuration: 2.5,
+        slowFactor: 0.35, slowDuration: 2.5, // giữ lại field cũ để tương thích ngược, engine đọc effectType
         maxLevel: 5, upgradeCost: 55, upgradeDamageMult: 0.25, upgradeRangeMult: 0.05,
         enabled: true,
       },
       {
         id: "may_ban_da", name: "Máy bắn đá", nameVi: "Máy bắn đá",
-        description: "Bắn đá tảng gây sát thương cực lớn trên diện rộng, tốc bắn chậm nhưng huỷ diệt cả đám đông.",
+        description: "Bắn đá tảng gây sát thương cực lớn trên diện rộng, tốc bắn chậm nhưng khắc chế Boss.",
         icon: "🪨", color: "#5a4a3a",
         cost: 220, damage: 55, range: 190, fireRate: 0.4,
         projectileSpeed: 260, splashRadius: 70,
+        criticalChance: 12, criticalMultiplier: 2.5, armorPenetration: 25,
+        effectType: "none", effectValue: 0, effectDuration: 0,
         maxLevel: 5, upgradeCost: 150, upgradeDamageMult: 0.32, upgradeRangeMult: 0.06,
+        enabled: true,
+      },
+      {
+        id: "riu_chien", name: "Rìu chiến", nameVi: "Rìu chiến",
+        description: "Cận chiến, sát thương đơn mục tiêu rất cao và tỉ lệ chí mạng lớn, nhưng tầm đánh ngắn.",
+        icon: "🪓", color: "#8a5a2f",
+        cost: 90, damage: 45, range: 75, fireRate: 0.9,
+        projectileSpeed: 900, splashRadius: 0,
+        criticalChance: 22, criticalMultiplier: 2.0, armorPenetration: 10,
+        effectType: "none", effectValue: 0, effectDuration: 0,
+        maxLevel: 5, upgradeCost: 70, upgradeDamageMult: 0.34, upgradeRangeMult: 0.04,
+        enabled: true,
+      },
+      {
+        id: "hoa_tien", name: "Hoả tiễn", nameVi: "Hoả tiễn",
+        description: "Tên lửa lửa gây sát thương diện rộng và đốt cháy quân địch theo thời gian.",
+        icon: "🚀", color: "#c9542a",
+        cost: 150, damage: 18, range: 150, fireRate: 0.9,
+        projectileSpeed: 380, splashRadius: 40,
+        criticalChance: 8, criticalMultiplier: 1.6, armorPenetration: 0,
+        effectType: "burn", effectValue: 6, effectDuration: 4,
+        maxLevel: 5, upgradeCost: 110, upgradeDamageMult: 0.3, upgradeRangeMult: 0.06,
+        enabled: true,
+      },
+      {
+        id: "khien_binh", name: "Khiên binh", nameVi: "Khiên binh",
+        description: "Sát thương thấp nhưng làm chậm mạnh, dùng để khống chế đội hình địch.",
+        icon: "🛡️", color: "#4a6a7a",
+        cost: 60, damage: 5, range: 80, fireRate: 1.6,
+        projectileSpeed: 520, splashRadius: 0,
+        criticalChance: 0, criticalMultiplier: 1, armorPenetration: 0,
+        effectType: "slow", effectValue: 0.55, effectDuration: 3,
+        maxLevel: 5, upgradeCost: 45, upgradeDamageMult: 0.2, upgradeRangeMult: 0.04,
+        enabled: true,
+      },
+      {
+        id: "thap_hoa_cong", name: "Hoả công", nameVi: "Hoả công",
+        description: "Kế hoả công diện rộng, sát thương ban đầu thấp nhưng đốt cháy dai dẳng cả nhóm địch.",
+        icon: "♨️", color: "#a8391f",
+        cost: 180, damage: 10, range: 120, fireRate: 1.0,
+        projectileSpeed: 340, splashRadius: 55,
+        criticalChance: 5, criticalMultiplier: 1.5, armorPenetration: 0,
+        effectType: "burn", effectValue: 8, effectDuration: 5,
+        maxLevel: 5, upgradeCost: 130, upgradeDamageMult: 0.28, upgradeRangeMult: 0.05,
         enabled: true,
       },
     ];
@@ -713,6 +767,56 @@ const DataService = (() => {
     console.info("[DataService] Đã di trú tiến trình từ phiên bản 1 (localStorage cũ).");
   }
 
+  /* Đảm bảo mọi công trình có đủ field Combat Engine (Giai đoạn 3):
+     Critical/Armor Penetration/Effect thống nhất, và các tháp mới đã có
+     mặt. Chỉ THÊM, không ghi đè field đã tồn tại. Idempotent - gọi lại
+     nhiều lần vô hại. Dùng cho cả migrate lúc khởi động lẫn sau import
+     một bản backup cũ (v2). */
+  function ensureBuildingCombatFields() {
+    const buildingDefaults = defaultBuildings();
+    const buildings = list("buildings");
+    const buildingIds = new Set(buildings.map((b) => b.id));
+    const migratedBuildings = buildings.map((b) => {
+      const patch = {};
+      if (b.criticalChance === undefined) patch.criticalChance = 8;
+      if (b.criticalMultiplier === undefined) patch.criticalMultiplier = 1.8;
+      if (b.armorPenetration === undefined) patch.armorPenetration = 0;
+      if (b.effectType === undefined) {
+        if (b.slowFactor) {
+          patch.effectType = "slow";
+          patch.effectValue = b.slowFactor;
+          patch.effectDuration = b.slowDuration || 2;
+        } else {
+          patch.effectType = "none";
+          patch.effectValue = 0;
+          patch.effectDuration = 0;
+        }
+      }
+      return Object.keys(patch).length ? Object.assign({}, b, patch) : b;
+    });
+    for (const def of buildingDefaults) {
+      if (!buildingIds.has(def.id)) migratedBuildings.push(def);
+    }
+    StorageService.set(KEYS.buildings, migratedBuildings);
+
+    const bosses = list("bosses").map((b) => {
+      const patch = {};
+      if (b.phases === undefined) patch.phases = [];
+      if (b.abilities === undefined) patch.abilities = [];
+      return Object.keys(patch).length ? Object.assign({}, b, patch) : b;
+    });
+    StorageService.set(KEYS.bosses, bosses);
+  }
+
+  /* Di trú schemaVersion 2 -> 3 (Giai đoạn 3 - Combat Engine). */
+  function migrateSchemaV2ToV3() {
+    const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
+    if (currentVersion >= SCHEMA_VERSION) return;
+    ensureBuildingCombatFields();
+    StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
+    console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 3: thêm Critical/Armor Penetration/Effect cho công trình, thêm tháp mới, thêm khung phases/abilities cho Boss.");
+  }
+
   function ensureSeeded() {
     const defaults = defaultAll();
     Object.keys(KEYS).forEach((name) => {
@@ -723,6 +827,7 @@ const DataService = (() => {
       }
     });
     migrateLegacyIfNeeded();
+    migrateSchemaV2ToV3();
     if (!StorageService.has(KEYS.schemaVersion)) {
       StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
     }
@@ -873,6 +978,7 @@ const DataService = (() => {
         StorageService.set(KEYS[name], snapshot.data[name]);
       }
     });
+    ensureBuildingCombatFields(); // vá field mới nếu snapshot import là bản backup cũ (v2)
     StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
   }
 

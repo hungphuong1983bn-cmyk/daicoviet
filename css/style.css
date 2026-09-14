@@ -248,6 +248,7 @@ html,body{
   border-color:var(--vang-sang);
 }
 .tower-option .t-icon{font-size:22px;}
+.tower-option .t-stats{font-size:9px;color:#c9b385;white-space:nowrap;}
 .tower-option .t-cost{color:var(--vang-sang);}
 .tower-option.disabled{opacity:.4;cursor:not-allowed;}
 
