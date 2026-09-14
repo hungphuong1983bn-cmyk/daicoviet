@@ -138,24 +138,37 @@ Ví dụ cụ thể đã kiểm chứng:
 
 ## 6. Các tính năng mới trong game (đồng bộ với Admin)
 
-- **Tướng chỉ huy**: chọn trước khi vào trận (màn "Tướng"), cộng HP thành,
+- **Tướng chỉ huy** (5 tướng: Đinh Bộ Lĩnh, Lê Hoàn, Ngô Quyền, Dương Vân
+  Nga, Đinh Liễn): chọn trước khi vào trận (màn "Tướng"), cộng HP thành,
   % sát thương tháp, giảm sát thương thành nhận; mở khoá bằng vàng bền
   vững (khác vàng trong trận).
-- **Kỹ năng chủ động**: gắn theo tướng, có nút riêng trong HUD, 3 loại hiệu
-  ứng đã lập trình thật: `damage_all`, `heal_castle`, `buff_attack_speed`.
-- **Nâng cấp tháp trong trận**: bấm vào tháp đã xây để nâng cấp (tăng
+- **Kỹ năng chủ động** (7 kỹ năng): gắn theo tướng, có nút riêng trong
+  HUD, 3 loại hiệu ứng đã lập trình thật: `damage_all`, `heal_castle`,
+  `buff_attack_speed`.
+- **5 loại quân thủ thành** (Cung thủ, Nỏ thần, Voi chiến, Bẫy cọc nhọn,
+  Máy bắn đá) — **nâng cấp tháp trong trận** tới **cấp 5** (tăng
   damage/range theo `upgradeDamageMult`/`upgradeRangeMult`/`maxLevel`).
-- **Boss**: xuất hiện ở wave cuối mỗi màn, có Defense/Resistance riêng.
-- **Nhiệm vụ**: 5 loại điều kiện (`WAVE_CLEARED`, `STAGE_CLEARED`,
-  `KILL_COUNT`, `CASTLE_HP_ABOVE_PERCENT`, `BOSS_KILLED`), thưởng vàng/EXP
-  bền vững, có màn hình riêng để nhận thưởng.
-- **3 màn chơi**: Hoa Lư → Phòng tuyến Đại La → Chiến trường Bạch Đằng, mở
-  khoá tuần tự khi qua màn trước.
+  Bẫy cọc nhọn giới thiệu cơ chế mới: **làm chậm địch** (`slowFactor`/
+  `slowDuration` trên Công trình → `Enemy.applySlow()` trong
+  `entities.js`), Admin chỉnh được ngay trong form CRUD.
+- **Boss** (6 boss): xuất hiện ở wave cuối mỗi màn, có Defense/Resistance
+  riêng.
+- **Nhiệm vụ** (11 nhiệm vụ, 5 loại điều kiện: `WAVE_CLEARED`,
+  `STAGE_CLEARED`, `KILL_COUNT`, `CASTLE_HP_ABOVE_PERCENT`,
+  `BOSS_KILLED`), thưởng vàng/EXP bền vững, có màn hình riêng để nhận
+  thưởng.
+- **6 màn chơi**: Hoa Lư → Phòng tuyến Đại La → Chiến trường Bạch Đằng →
+  Ải Chi Lăng → Sông Bình Lỗ → Kinh đô Thăng Long, mở khoá tuần tự khi
+  qua màn trước.
 - **Cấu hình game** ảnh hưởng thật: `debugMode` (hiện vùng bắn tháp),
   `showDamageNumbers` (số sát thương bay lên), `showEnemyHpBar`,
   `showFps`, `autoSaveEnabled`, `tutorialEnabled` (gợi ý 1 lần khi vào
   trận lần đầu), `ENEMY_SPAWN_RATE`, `REWARD_MULTIPLIER`,
   `BOSS_MULTIPLIER`, `START_GOLD`, `START_HP`, `MAX_LEVEL`.
+- **Giao diện**: hiệu ứng chuyển màn, hover/­glow cho nút và thẻ bài,
+  vòng sáng khi kỹ năng sẵn sàng, hiệu ứng "làm chậm" hiển thị quanh
+  quân địch trúng Bẫy cọc nhọn — toàn bộ chỉ dùng CSS/canvas, không cần
+  ảnh mới.
 
 ### Giới hạn được ghi nhận rõ ràng (không làm giả)
 

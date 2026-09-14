@@ -49,6 +49,8 @@ const ADMIN_SCHEMAS = {
       { key: "fireRate", label: "Attack Speed (phát/giây)", type: "number", step: "0.1" },
       { key: "projectileSpeed", label: "Tốc độ đạn", type: "number" },
       { key: "splashRadius", label: "Bán kính lan (0 = không)", type: "number" },
+      { key: "slowFactor", label: "Làm chậm địch % khi trúng đạn (0 = không, vd 0.35 = -35% tốc độ)", type: "number", step: "0.01" },
+      { key: "slowDuration", label: "Thời gian làm chậm (giây)", type: "number" },
       { key: "maxLevel", label: "Level tối đa", type: "number" },
       { key: "upgradeCost", label: "Giá nâng cấp / cấp", type: "number" },
       { key: "upgradeDamageMult", label: "Hệ số tăng Damage / cấp", type: "number", step: "0.01" },

@@ -41,10 +41,26 @@ class Enemy {
     this.y = path[0].y;
     this.alive = true;
     this.reachedCastle = false;
+    this._slowMultiplier = 1; // 1 = tốc độ bình thường, <1 = đang bị làm chậm
+    this._slowTimer = 0;
+  }
+
+  /* Gọi bởi Projectile khi trúng đạn từ tháp có slowFactor (vd. Bẫy cọc nhọn).
+     multiplier: hệ số còn lại của tốc độ (vd. 0.65 = giảm 35%).
+     Không cộng dồn chồng chéo: chỉ giữ hiệu ứng mạnh/lâu hơn hiện tại. */
+  applySlow(multiplier, duration) {
+    if (multiplier < this._slowMultiplier || duration > this._slowTimer) {
+      this._slowMultiplier = multiplier;
+      this._slowTimer = duration;
+    }
   }
 
   update(dt) {
     if (!this.alive) return;
+    if (this._slowTimer > 0) {
+      this._slowTimer -= dt;
+      if (this._slowTimer <= 0) { this._slowTimer = 0; this._slowMultiplier = 1; }
+    }
     const target = this.path[this.wpIndex + 1];
     if (!target) {
       this.reachedCastle = true;
@@ -54,7 +70,7 @@ class Enemy {
     const dx = target.x - this.x;
     const dy = target.y - this.y;
     const dist = Math.hypot(dx, dy);
-    const step = this.speed * dt;
+    const step = this.speed * this._slowMultiplier * dt;
     if (step >= dist) {
       this.x = target.x;
       this.y = target.y;
@@ -87,6 +103,16 @@ class Enemy {
     ctx.lineWidth = this.isBoss ? 3 : 2;
     ctx.strokeStyle = this.isBoss ? "#e8c873" : "rgba(0,0,0,.4)";
     ctx.stroke();
+    // vòng xanh khi đang bị làm chậm (Bẫy cọc nhọn...)
+    if (this._slowTimer > 0) {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, r + 4, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(120,200,230,.8)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     // icon
     ctx.font = `${r}px serif`;
     ctx.textAlign = "center";
@@ -206,6 +232,8 @@ class Projectile {
     this.damage = tower.effectiveDamage() * (damageMult || 1);
     this.speed = tower.def.projectileSpeed;
     this.splashRadius = tower.def.splashRadius;
+    this.slowFactor = tower.def.slowFactor || 0;
+    this.slowDuration = tower.def.slowDuration || 0;
     this.color = tower.def.color;
     this.targetId = target.id;
     this.alive = true;
@@ -232,10 +260,20 @@ class Projectile {
       for (const e of enemies) {
         if (!e.alive) continue;
         const d = Math.hypot(e.x - target.x, e.y - target.y);
-        if (d <= this.splashRadius) e.takeDamage(this.damage);
+        if (d <= this.splashRadius) {
+          e.takeDamage(this.damage);
+          this._applySlowIfAny(e);
+        }
       }
     } else {
       target.takeDamage(this.damage);
+      this._applySlowIfAny(target);
+    }
+  }
+
+  _applySlowIfAny(enemy) {
+    if (this.slowFactor > 0 && enemy.alive) {
+      enemy.applySlow(1 - this.slowFactor, this.slowDuration);
     }
   }
 
