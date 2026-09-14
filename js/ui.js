@@ -503,18 +503,48 @@ const UI = {
     }
   },
 
+  /* Định vị khung tower-picker LUÔN nằm gọn trong vùng game-stage, dù
+     chạm gần mép màn hình (trên/dưới/trái/phải) — tránh bị vỡ khung /
+     cắt mất nút trên mobile. Phải gọi SAU KHI đã render nội dung bên
+     trong picker để đo đúng kích thước thực tế. */
   _positionPicker(clientX, clientY) {
     const picker = this.els.towerPicker;
-    const stageRect = this.els.canvas.parentElement.getBoundingClientRect();
-    picker.style.left = (clientX - stageRect.left) + "px";
-    picker.style.top = (clientY - stageRect.top) + "px";
+    const stage = this.els.canvas.parentElement;
+    const stageRect = stage.getBoundingClientRect();
+    const margin = 8;
+
+    // Bỏ transform CSS mặc định, tự tính toạ độ tuyệt đối bằng JS.
+    picker.style.transform = "none";
+    // Giới hạn chiều cao theo sân khấu để có thể cuộn nếu danh sách dài
+    // (ví dụ màn hình di động ở chế độ ngang, rất thấp).
+    picker.style.maxHeight = Math.max(120, stageRect.height - margin * 2) + "px";
+    picker.classList.remove("hidden");
+
+    const pw = picker.offsetWidth;
+    const ph = picker.offsetHeight;
+
+    const x = clientX - stageRect.left;
+    const y = clientY - stageRect.top;
+
+    // Mặc định: canh giữa theo chiều ngang, hiện phía trên điểm chạm.
+    let left = x - pw / 2;
+    let top = y - ph - 14;
+
+    // Không đủ chỗ phía trên (vd. chạm gần mép trên) -> hiện phía dưới.
+    if (top < margin) top = Math.min(y + 14, stageRect.height - ph - margin);
+
+    // Kẹp trong phạm vi sân khấu để không bao giờ tràn ra ngoài / bị cắt.
+    left = Math.max(margin, Math.min(left, stageRect.width - pw - margin));
+    top = Math.max(margin, Math.min(top, stageRect.height - ph - margin));
+
+    picker.style.left = left + "px";
+    picker.style.top = top + "px";
   },
 
   _showTowerPicker(spotIndex, clientX, clientY) {
     this._pickerMode = "build";
     this.selectedSpot = spotIndex;
     const picker = this.els.towerPicker;
-    this._positionPicker(clientX, clientY);
     picker.innerHTML = "";
 
     for (const typeId in GAME_DATA.towerTypes) {
@@ -534,7 +564,8 @@ const UI = {
       });
       picker.appendChild(opt);
     }
-    picker.classList.remove("hidden");
+    // Render nội dung xong rồi mới định vị, để đo đúng kích thước thực.
+    this._positionPicker(clientX, clientY);
   },
 
   _showUpgradePanel(spotIndex, clientX, clientY) {
@@ -543,7 +574,6 @@ const UI = {
     const tower = Game.run.towers.find(t => t.spotIndex === spotIndex);
     if (!tower) return;
     const picker = this.els.towerPicker;
-    this._positionPicker(clientX, clientY);
     picker.innerHTML = "";
 
     const cost = tower.nextUpgradeCost();
@@ -575,7 +605,8 @@ const UI = {
         this._hideTowerPicker();
       });
     }
-    picker.classList.remove("hidden");
+    // Render nội dung xong rồi mới định vị, để đo đúng kích thước thực.
+    this._positionPicker(clientX, clientY);
   },
 
   _hideTowerPicker() {

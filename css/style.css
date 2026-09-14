@@ -225,14 +225,19 @@ html,body{
 /* ---------- Bộ chọn quân (tower picker) ---------- */
 .tower-picker{
   position:absolute;
+  /* left/top được tính chính xác bằng JS (UI._positionPicker) để luôn
+     nằm gọn trong game-stage, không tràn/cắt trên mobile. */
   background:linear-gradient(180deg,#3a2a1c,#241a12);
   border:2px solid var(--vang-dong);
   border-radius:10px;
   padding:10px;
-  display:flex;gap:8px;flex-wrap:wrap;max-width:min(320px,80vw);
+  display:flex;gap:8px;flex-wrap:wrap;
+  width:max-content;
+  max-width:min(320px,88vw);
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
   z-index:20;
   box-shadow:0 10px 24px var(--shadow);
-  transform:translate(-50%,-110%);
 }
 .tower-picker.hidden{display:none;}
 .tower-option{
@@ -240,6 +245,8 @@ html,body{
   gap:4px;padding:8px 10px;border-radius:8px;
   border:1px solid rgba(201,162,74,.4);
   background:rgba(0,0,0,.2);cursor:pointer;font-size:12px;min-width:64px;
+  flex:1 1 64px;
+  touch-action:manipulation;
   transition:transform .15s ease, background .15s ease, border-color .15s ease;
 }
 .tower-option:hover:not(.disabled){
@@ -364,11 +371,59 @@ html,body{
 .toast.visible{opacity:1;transform:translateY(0) scale(1);box-shadow:0 8px 24px var(--shadow), 0 0 0 1px rgba(232,200,115,.2);}
 
 /* ---------- Responsive ---------- */
-@media (max-width:640px){
-  .hud-stat{font-size:12px;padding:5px 8px;min-width:0;}
-  .btn-wave{min-width:140px;font-size:14px;}
-  .menu-panel{padding:20px 16px;}
+/* An toàn cho các thiết bị có notch/thanh cử chỉ (iPhone...) */
+.hud{
+  padding-top:max(10px, env(safe-area-inset-top));
 }
+.game-footer{
+  padding-bottom:max(10px, env(safe-area-inset-bottom));
+}
+.screen{
+  padding-top:max(24px, env(safe-area-inset-top));
+  padding-bottom:max(24px, env(safe-area-inset-bottom));
+  padding-left:max(24px, env(safe-area-inset-left));
+  padding-right:max(24px, env(safe-area-inset-right));
+}
+
+@media (max-width:640px){
+  html{font-size:15px;}
+  .hud{gap:6px;padding-left:8px;padding-right:8px;}
+  .hud-stat{font-size:12px;padding:5px 8px;min-width:0;gap:4px;}
+  .hud-icon{font-size:13px;}
+  .hud-actions{gap:6px;}
+  .btn-small{padding:8px 10px;font-size:13px;}
+  .btn-wave{min-width:0;width:100%;font-size:14px;}
+  .game-footer{padding:8px 10px;}
+  .menu-panel{padding:20px 16px;}
+  .menu-panel.wide{width:96vw;}
+  .tower-picker{max-width:92vw;padding:8px;gap:6px;}
+  .tower-option{min-width:56px;padding:6px 8px;font-size:11px;}
+  .tower-option .t-icon{font-size:19px;}
+  .tower-option .t-stats{white-space:normal;text-align:center;}
+  .overlay-panel{padding:20px 18px;}
+  .level-list,.hero-list,.quest-list{max-height:50vh;}
+}
+
+/* Màn hình rất nhỏ (điện thoại phổ thông, iPhone SE...) */
+@media (max-width:380px){
+  .game-title{font-size:26px;}
+  .hud-stat{font-size:11px;padding:4px 6px;}
+  .hud-icon{font-size:12px;}
+  .btn{font-size:14px;padding:10px 14px;}
+  .btn-small{font-size:12px;padding:7px 8px;}
+}
+
+/* Chế độ ngang trên điện thoại (chiều cao thấp) — thu gọn HUD/footer
+   để tăng diện tích cho khu vực chơi. */
+@media (max-height:420px) and (orientation:landscape){
+  .hud{padding:6px 10px;}
+  .hud-stat{padding:4px 8px;font-size:11px;}
+  .game-footer{padding:6px 10px;}
+  .btn-wave{min-width:120px;}
+  .menu-panel{padding:14px 16px;}
+  .screen{padding:12px;}
+}
+
 @media (min-width:1024px){
   .game-stage{padding:12px;}
 }
