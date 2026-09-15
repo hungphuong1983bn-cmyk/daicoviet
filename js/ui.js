@@ -55,12 +55,21 @@ const UI = {
 
       hudGold: document.getElementById("hud-gold"),
       hudHp: document.getElementById("hud-hp"),
+      hudScore: document.getElementById("hud-score"),
       hudWave: document.getElementById("hud-wave"),
+      comboBadge: document.getElementById("combo-badge"),
       btnSpeed: document.getElementById("btn-speed"),
       btnSkill: document.getElementById("btn-skill"),
       btnPause: document.getElementById("btn-pause"),
       btnExit: document.getElementById("btn-exit"),
       btnStartWave: document.getElementById("btn-start-wave"),
+
+      bossBar: document.getElementById("boss-bar"),
+      bossBarIcon: document.getElementById("boss-bar-icon"),
+      bossBarName: document.getElementById("boss-bar-name"),
+      bossBarPhase: document.getElementById("boss-bar-phase"),
+      bossBarFill: document.getElementById("boss-bar-fill"),
+      bossBarHp: document.getElementById("boss-bar-hp"),
 
       canvas: document.getElementById("game-canvas"),
       towerPicker: document.getElementById("tower-picker"),
@@ -68,8 +77,11 @@ const UI = {
 
       overlayResult: document.getElementById("overlay-result"),
       overlayTitle: document.getElementById("overlay-title"),
+      overlayStars: document.getElementById("overlay-stars"),
       overlayDesc: document.getElementById("overlay-desc"),
+      overlayStats: document.getElementById("overlay-stats"),
       btnResultRetry: document.getElementById("btn-result-retry"),
+      btnResultNext: document.getElementById("btn-result-next"),
       btnResultMenu: document.getElementById("btn-result-menu"),
 
       overlayPause: document.getElementById("overlay-pause"),
@@ -153,6 +165,10 @@ const UI = {
       this.hideOverlay(e.overlayResult);
       this._startStage(Game.run.levelId, Game.run.heroId);
     });
+    e.btnResultNext.addEventListener("click", () => {
+      this.hideOverlay(e.overlayResult);
+      if (this._nextStageId) this._startStage(this._nextStageId, Game.run.heroId);
+    });
     e.btnResultMenu.addEventListener("click", () => this.exitToMenu());
 
     e.canvas.addEventListener("click", (ev) => this._handleCanvasClick(ev));
@@ -195,6 +211,11 @@ const UI = {
     for (const stage of stages) {
       const isUnlocked = unlocked.includes(stage.id);
       const best = (GameState.progress.bestWave || {})[stage.id] || 0;
+      const bestStars = (GameState.progress.stageStars || {})[stage.id] || 0;
+      const bestScore = (GameState.progress.bestScore || {})[stage.id] || 0;
+      const starsLine = bestStars > 0
+        ? `<span>${"⭐".repeat(bestStars)}${"☆".repeat(3 - bestStars)} · ${bestScore.toLocaleString("vi-VN")} điểm</span>`
+        : "";
       const card = document.createElement("div");
       card.className = "level-card" + (isUnlocked ? "" : " locked");
       card.innerHTML = `
@@ -206,6 +227,7 @@ const UI = {
         <div class="level-meta">
           <span>${stage.waves.length} đợt</span>
           <span>Tốt nhất: ${best}/${stage.waves.length}</span>
+          ${starsLine}
         </div>
         ${isUnlocked ? "" : '<div class="level-lock">🔒 Cần hoàn thành màn trước</div>'}
       `;
@@ -243,6 +265,16 @@ const UI = {
       const owned = (player.heroesOwned || []).includes(hero.id);
       const selected = player.selectedHero === hero.id;
       const level = (player.heroLevels || {})[hero.id] || 1;
+      const maxLevel = hero.maxLevel || 5;
+      const heroExp = (player.heroExp || {})[hero.id] || 0;
+      const expNeeded = GameState.heroExpNeeded(hero, level);
+      const expPct = level >= maxLevel ? 100 : Math.min(100, Math.round((heroExp / expNeeded) * 100));
+      const expBar = owned
+        ? `<div class="hero-exp-row">
+             <div class="hero-exp-track"><div class="hero-exp-fill" style="width:${expPct}%"></div></div>
+             <span class="hero-exp-label">${level >= maxLevel ? "MAX" : `${heroExp}/${expNeeded} EXP`}</span>
+           </div>`
+        : "";
       const card = document.createElement("div");
       card.className = "hero-card" + (selected ? " selected" : "");
       card.innerHTML = `
@@ -255,6 +287,7 @@ const UI = {
             <span>+${hero.damage}% ST tháp</span>
             <span>-${hero.defense} ST nhận</span>
           </div>
+          ${expBar}
         </div>
         <div class="hero-action"></div>
       `;
@@ -417,8 +450,11 @@ const UI = {
     if (!r) return;
     this.els.hudGold.textContent = r.gold;
     this.els.hudHp.textContent = `${Math.max(0, Math.round(r.hp))}/${r.maxHp}`;
+    this.els.hudScore.textContent = Math.round(r.score);
     const waveShown = Math.max(0, r.waveIndex + 1);
     this.els.hudWave.textContent = `${waveShown}/${r.totalWaves}`;
+    this._updateBossBar();
+    this._updateComboBadge(r);
 
     if (r.skillDef) {
       this.els.btnSkill.classList.remove("hidden");
@@ -434,17 +470,130 @@ const UI = {
     }
   },
 
+  /* ---------------- THANH MÁU BOSS (mục XVII) ---------------- */
+  _updateBossBar() {
+    const r = Game.run;
+    const bar = this.els.bossBar;
+    if (!r || !bar) return;
+    const boss = r.enemies.find((e) => e.isBoss && e.alive);
+    if (!boss) {
+      bar.classList.add("hidden");
+      this._bossBarShownId = null;
+      return;
+    }
+    bar.classList.remove("hidden");
+    this.els.bossBarIcon.textContent = boss.def.icon || "👹";
+    this.els.bossBarName.textContent = boss.def.name;
+    const pct = Math.max(0, boss.hp / boss.maxHp) * 100;
+    this.els.bossBarFill.style.width = pct.toFixed(1) + "%";
+    this.els.bossBarHp.textContent = `${Math.max(0, Math.round(boss.hp))} / ${boss.maxHp} HP`;
+    this.els.bossBarPhase.textContent = boss.currentPhase ? boss.currentPhase.name : "";
+    bar.classList.toggle("boss-bar-enrage", !!(boss.currentPhase && boss.currentPhase.enrage));
+    this._bossBarShownId = boss.id;
+  },
+
+  /* ---------------- COMBO (mục XXVI) ---------------- */
+  _updateComboBadge(r) {
+    const badge = this.els.comboBadge;
+    if (!badge) return;
+    if (r.combo >= 2) {
+      badge.classList.remove("hidden");
+      badge.textContent = `🔥 COMBO x${r.combo}`;
+      const tier = r.combo >= 20 ? "combo-t4" : r.combo >= 10 ? "combo-t3" : r.combo >= 5 ? "combo-t2" : "combo-t1";
+      badge.className = "combo-badge " + tier;
+    } else {
+      badge.classList.add("hidden");
+    }
+  },
+
+  /* Boss đổi phase (vd. 60% -> "Mạnh hơn", 30% -> "Cuồng nộ"): cảnh báo
+     bằng Toast + flash nhẹ thanh máu Boss, không rung màn hình mạnh để
+     tránh khó chịu trên di động (mục XXXVI). */
+  onBossPhaseChanged(boss, phase) {
+    const bar = this.els.bossBar;
+    if (bar) {
+      bar.classList.remove("boss-bar-flash");
+      void bar.offsetWidth; // ép trình duyệt reset animation để có thể phát lại
+      bar.classList.add("boss-bar-flash");
+    }
+    if (phase && phase.enrage) {
+      this.showToast(`⚠ ${boss.def.name} CUỒNG NỘ!`);
+    } else if (phase) {
+      this.showToast(`${boss.def.name} bước sang giai đoạn: ${phase.name}`);
+    }
+  },
+
+  onBossAbilityUsed(boss, ability) {
+    this.showToast(`${boss.def.name} dùng chiêu: ${ability.name}!`);
+  },
+
+  onHeroLeveledUp(heroId, level) {
+    const hero = GAME_DATA.generals && GAME_DATA.generals[heroId];
+    this.showToast(`🎉 ${hero ? (hero.nameVi || hero.name) : "Tướng"} đã lên Lv${level}!`);
+  },
+
   onWaveCleared() {
     this.els.btnStartWave.disabled = false;
   },
 
-  onGameEnded(won) {
+  onGameEnded(won, stats) {
     this._stopHudLoop();
-    this.els.overlayTitle.textContent = won ? "Chiến thắng!" : "Thành đã thất thủ";
+    if (this.els.bossBar) this.els.bossBar.classList.add("hidden");
+    if (this.els.comboBadge) this.els.comboBadge.classList.add("hidden");
+    this.els.overlayTitle.textContent = won ? "🏆 CHIẾN THẮNG" : "💀 THÀNH ĐÃ THẤT THỦ";
+
+    const s = stats || {};
+    // Sao (mục V/LIII) - chỉ hiện khi thắng
+    if (this.els.overlayStars) {
+      if (won) {
+        const stars = s.stars || 0;
+        this.els.overlayStars.textContent = "⭐".repeat(stars) + "☆".repeat(Math.max(0, 3 - stars));
+        this.els.overlayStars.classList.remove("hidden");
+      } else {
+        this.els.overlayStars.classList.add("hidden");
+        this.els.overlayStars.textContent = "";
+      }
+    }
+
     this.els.overlayDesc.textContent = won
-      ? "Đại Cồ Việt vững vàng dưới sự bảo vệ của các anh hùng."
-      : "Quân sứ quân đã tràn vào Hoa Lư. Hãy thử lại!";
+      ? ((s.stars || 0) >= 3 ? "HOÀN HẢO! Đại Cồ Việt vững vàng dưới sự bảo vệ của các anh hùng." : "Đại Cồ Việt vững vàng dưới sự bảo vệ của các anh hùng.")
+      : "Quân địch đã tràn vào thành. Hãy thử lại!";
+
+    // Thống kê thật của trận (mục LIII/LIV) - không phải số giả
+    if (this.els.overlayStats) {
+      const mm = Math.floor((s.elapsedTime || 0) / 60);
+      const ss = String((s.elapsedTime || 0) % 60).padStart(2, "0");
+      const rows = [
+        `<span>⚔ Score</span><strong>${(s.score || 0).toLocaleString("vi-VN")}</strong>`,
+        `<span>💀 Enemy tiêu diệt</span><strong>${s.killCount || 0}</strong>`,
+        `<span>👹 Boss</span><strong>${s.bossKillCount || 0}</strong>`,
+        `<span>🔥 Combo cao nhất</span><strong>x${s.maxCombo || 0}</strong>`,
+        `<span>🎯 Chí mạng</span><strong>${s.critCount || 0}</strong>`,
+        `<span>⏱ Thời gian</span><strong>${mm}:${ss}</strong>`,
+      ];
+      if (!won) {
+        rows.push(`<span class="overlay-tip">Gợi ý: nâng cấp tháp, dùng thêm tháp diện rộng, hoặc chọn tướng phòng thủ.</span>`);
+      }
+      this.els.overlayStats.innerHTML = rows.map((r) => `<div class="overlay-stat-row">${r}</div>`).join("");
+    }
+
+    // Nút "Màn tiếp theo" - chỉ hiện khi thắng và còn màn kế mở được
+    this._nextStageId = won ? this._findNextStageId(Game.run && Game.run.levelId) : null;
+    if (this.els.btnResultNext) this.els.btnResultNext.classList.toggle("hidden", !this._nextStageId);
+
     this.showOverlay(this.els.overlayResult);
+  },
+
+  _findNextStageId(currentStageId) {
+    if (!currentStageId) return null;
+    const stages = Object.values(GAME_DATA.levels)
+      .filter((s) => s.enabled !== false)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+    const idx = stages.findIndex((s) => s.id === currentStageId);
+    if (idx === -1 || idx + 1 >= stages.length) return null;
+    const next = stages[idx + 1];
+    const unlocked = GameState.progress.unlockedLevels || [];
+    return unlocked.includes(next.id) ? next.id : null;
   },
 
   /* ---------------- TẠM DỪNG ---------------- */
@@ -503,48 +652,18 @@ const UI = {
     }
   },
 
-  /* Định vị khung tower-picker LUÔN nằm gọn trong vùng game-stage, dù
-     chạm gần mép màn hình (trên/dưới/trái/phải) — tránh bị vỡ khung /
-     cắt mất nút trên mobile. Phải gọi SAU KHI đã render nội dung bên
-     trong picker để đo đúng kích thước thực tế. */
   _positionPicker(clientX, clientY) {
     const picker = this.els.towerPicker;
-    const stage = this.els.canvas.parentElement;
-    const stageRect = stage.getBoundingClientRect();
-    const margin = 8;
-
-    // Bỏ transform CSS mặc định, tự tính toạ độ tuyệt đối bằng JS.
-    picker.style.transform = "none";
-    // Giới hạn chiều cao theo sân khấu để có thể cuộn nếu danh sách dài
-    // (ví dụ màn hình di động ở chế độ ngang, rất thấp).
-    picker.style.maxHeight = Math.max(120, stageRect.height - margin * 2) + "px";
-    picker.classList.remove("hidden");
-
-    const pw = picker.offsetWidth;
-    const ph = picker.offsetHeight;
-
-    const x = clientX - stageRect.left;
-    const y = clientY - stageRect.top;
-
-    // Mặc định: canh giữa theo chiều ngang, hiện phía trên điểm chạm.
-    let left = x - pw / 2;
-    let top = y - ph - 14;
-
-    // Không đủ chỗ phía trên (vd. chạm gần mép trên) -> hiện phía dưới.
-    if (top < margin) top = Math.min(y + 14, stageRect.height - ph - margin);
-
-    // Kẹp trong phạm vi sân khấu để không bao giờ tràn ra ngoài / bị cắt.
-    left = Math.max(margin, Math.min(left, stageRect.width - pw - margin));
-    top = Math.max(margin, Math.min(top, stageRect.height - ph - margin));
-
-    picker.style.left = left + "px";
-    picker.style.top = top + "px";
+    const stageRect = this.els.canvas.parentElement.getBoundingClientRect();
+    picker.style.left = (clientX - stageRect.left) + "px";
+    picker.style.top = (clientY - stageRect.top) + "px";
   },
 
   _showTowerPicker(spotIndex, clientX, clientY) {
     this._pickerMode = "build";
     this.selectedSpot = spotIndex;
     const picker = this.els.towerPicker;
+    this._positionPicker(clientX, clientY);
     picker.innerHTML = "";
 
     for (const typeId in GAME_DATA.towerTypes) {
@@ -564,8 +683,7 @@ const UI = {
       });
       picker.appendChild(opt);
     }
-    // Render nội dung xong rồi mới định vị, để đo đúng kích thước thực.
-    this._positionPicker(clientX, clientY);
+    picker.classList.remove("hidden");
   },
 
   _showUpgradePanel(spotIndex, clientX, clientY) {
@@ -574,6 +692,7 @@ const UI = {
     const tower = Game.run.towers.find(t => t.spotIndex === spotIndex);
     if (!tower) return;
     const picker = this.els.towerPicker;
+    this._positionPicker(clientX, clientY);
     picker.innerHTML = "";
 
     const cost = tower.nextUpgradeCost();
@@ -605,8 +724,7 @@ const UI = {
         this._hideTowerPicker();
       });
     }
-    // Render nội dung xong rồi mới định vị, để đo đúng kích thước thực.
-    this._positionPicker(clientX, clientY);
+    picker.classList.remove("hidden");
   },
 
   _hideTowerPicker() {

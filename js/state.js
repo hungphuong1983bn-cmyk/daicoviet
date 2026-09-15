@@ -29,6 +29,8 @@ const GameState = {
   progress: {
     unlockedLevels: ["hoa_lu"],
     bestWave: {},
+    stageStars: {},
+    bestScore: {},
     settings: { sound: true },
   },
 
@@ -43,6 +45,8 @@ const GameState = {
     if (!player) return;
     this.progress.unlockedLevels = player.unlockedStages || ["hoa_lu"];
     this.progress.bestWave = player.bestWave || {};
+    this.progress.stageStars = player.stageStars || {};
+    this.progress.bestScore = player.bestScore || {};
     this.progress.settings = player.settings || { sound: true };
   },
 
@@ -77,6 +81,49 @@ const GameState = {
     );
     StorageService.remove(RUN_SNAPSHOT_KEY);
     this._syncProgressFromPlayer(fresh);
+  },
+
+  /* ---------- Hero EXP / Level thật (Giai đoạn 3, Priority 3) ----------
+     Tách biệt hoàn toàn với player.exp (EXP người chơi) ở trên, đúng yêu
+     cầu: "Không được dùng chung EXP người chơi và Hero EXP". EXP cộng dồn
+     trong player.heroExp[heroId], lên cấp thật sự làm heroLevels[heroId]
+     tăng, và scale thẳng vào Passive/Active Skill của tướng đó (đọc lại
+     ở đầu trận kế tiếp qua Game._heroBonuses, giống cách hp/damage/defense
+     hiện tại đã scale theo level).
+     Công thức EXP cần cho level N -> N+1: expToUpgrade * N (tăng dần theo
+     cấp, giống công thức level*100 đã dùng cho EXP người chơi ở trên). */
+  heroExpNeeded(heroDef, level) {
+    return Math.round((heroDef.expToUpgrade || 100) * level);
+  },
+
+  /* Cộng EXP thật cho một tướng sau khi kết thúc trận (thắng hoặc thua
+     đều được tính, vì EXP là công lao diệt địch trong trận, không phải
+     phần thưởng riêng của chiến thắng). Trả về { level, leveledUp, expLeft, needed }
+     để UI có thể báo "Tướng đã lên cấp!". */
+  addHeroExp(heroId, exp) {
+    if (!heroId || !exp || exp <= 0) return null;
+    const player = this.getPlayer();
+    if (!player) return null;
+    const heroDef = DataService.get("heroes", heroId);
+    if (!heroDef) return null;
+    const maxLevel = heroDef.maxLevel || 5;
+    const heroExpMap = Object.assign({}, player.heroExp);
+    const heroLevels = Object.assign({}, player.heroLevels);
+    let level = heroLevels[heroId] || 1;
+    let expLeft = (heroExpMap[heroId] || 0) + exp;
+    let needed = this.heroExpNeeded(heroDef, level);
+    let leveledUp = false;
+    while (level < maxLevel && expLeft >= needed) {
+      expLeft -= needed;
+      level += 1;
+      leveledUp = true;
+      needed = this.heroExpNeeded(heroDef, level);
+    }
+    if (level >= maxLevel) expLeft = 0; // đã tối đa, không tích luỹ EXP thừa vô ích
+    heroExpMap[heroId] = expLeft;
+    heroLevels[heroId] = level;
+    DataService.update("players", player.id, { heroExp: heroExpMap, heroLevels });
+    return { level, leveledUp, expLeft, needed };
   },
 
   /* ---------- Vàng bền vững / EXP / tướng (dùng cho màn Tướng) ---------- */
@@ -137,6 +184,27 @@ const GameState = {
     bestWave[levelId] = Math.max(bestWave[levelId] || 0, waveNumber);
     DataService.update("players", player.id, { bestWave });
     this.progress.bestWave = bestWave;
+  },
+
+  /* ---------- Score / 3 Sao (Giai đoạn 3, Priority 5) ----------
+     stars: số sao đạt được lần này (0 nếu thua). Không bao giờ làm GIẢM
+     số sao/điểm/thành tích đã có trước đó (chỉ giữ giá trị tốt nhất).
+     time (giây) chỉ được truyền khi THẮNG - thời gian của một trận thua
+     không có ý nghĩa "kỷ lục" nên không cập nhật bestTime khi thua. */
+  recordStageResult(stageId, { stars = 0, score = 0, time } = {}) {
+    const player = this.getPlayer();
+    if (!player) return;
+    const stageStars = Object.assign({}, player.stageStars);
+    const bestScore = Object.assign({}, player.bestScore);
+    const bestTime = Object.assign({}, player.bestTime);
+    stageStars[stageId] = Math.max(stageStars[stageId] || 0, stars);
+    bestScore[stageId] = Math.max(bestScore[stageId] || 0, Math.round(score));
+    if (time !== undefined) {
+      bestTime[stageId] = bestTime[stageId] ? Math.min(bestTime[stageId], Math.round(time)) : Math.round(time);
+    }
+    DataService.update("players", player.id, { stageStars, bestScore, bestTime });
+    this.progress.stageStars = stageStars;
+    this.progress.bestScore = bestScore;
   },
 
   /* ---------- Ván chơi dở (Continue) ----------

@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Đại Cồ Việt – Thủ Thành Hoa Lư</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -122,7 +122,8 @@
   <div class="hud">
     <div class="hud-stat hud-gold"><span class="hud-icon">🪙</span><span id="hud-gold">0</span></div>
     <div class="hud-stat hud-hp"><span class="hud-icon">🏯</span><span id="hud-hp">0</span></div>
-    <div class="hud-stat hud-wave"><span class="hud-icon">⚔</span><span id="hud-wave">0/0</span></div>
+    <div class="hud-stat hud-score"><span class="hud-icon">⚔</span><span id="hud-score">0</span></div>
+    <div class="hud-stat hud-wave"><span class="hud-icon">🌊</span><span id="hud-wave">0/0</span></div>
     <div class="hud-actions">
       <button class="btn btn-small hidden" id="btn-skill" title="Kỹ năng tướng">✨</button>
       <button class="btn btn-small" id="btn-speed">x1</button>
@@ -130,9 +131,19 @@
       <button class="btn btn-small btn-exit" id="btn-exit">✕</button>
     </div>
   </div>
+  <div id="combo-badge" class="combo-badge hidden">COMBO x0</div>
 
   <div class="game-stage">
     <canvas id="game-canvas" width="960" height="540"></canvas>
+    <div id="boss-bar" class="boss-bar hidden">
+      <div class="boss-bar-head">
+        <span id="boss-bar-icon">👹</span>
+        <span id="boss-bar-name">BOSS</span>
+        <span id="boss-bar-phase" class="boss-bar-phase"></span>
+      </div>
+      <div class="boss-bar-track"><div id="boss-bar-fill" class="boss-bar-fill"></div></div>
+      <div id="boss-bar-hp" class="boss-bar-hp">0 / 0</div>
+    </div>
     <div id="tower-picker" class="tower-picker hidden"></div>
   </div>
 
@@ -144,9 +155,12 @@
   <div id="overlay-result" class="overlay hidden">
     <div class="overlay-panel">
       <h2 id="overlay-title">Chiến thắng!</h2>
+      <div id="overlay-stars" class="overlay-stars"></div>
       <p id="overlay-desc"></p>
+      <div id="overlay-stats" class="overlay-stats"></div>
       <div class="overlay-actions">
         <button class="btn btn-primary" id="btn-result-retry">Chơi lại</button>
+        <button class="btn btn-primary hidden" id="btn-result-next">Màn tiếp theo</button>
         <button class="btn" id="btn-result-menu">Về menu</button>
       </div>
     </div>

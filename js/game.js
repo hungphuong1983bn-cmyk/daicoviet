@@ -18,6 +18,24 @@
      thực sự ảnh hưởng tới vòng lặp và cách vẽ.
    ========================================================= */
 
+/* Hằng số Score/Combo (Giai đoạn 3, Priority 5). Giữ dạng code constant
+   thay vì thêm field Admin ở bước này để tránh phình schema/migration
+   quá mức trong 1 lượt - có thể chuyển vào GAME_DATA.config sau nếu cần
+   Admin tinh chỉnh cân bằng điểm số. */
+const SCORE_RULES = {
+  KILL_BASE: 5,
+  KILL_REWARD_MULT: 1.5,   // điểm = KILL_BASE + reward vàng * hệ số này
+  CRIT_BONUS: 10,
+  BOSS_KILL_BONUS: 400,
+  WAVE_CLEAR_BONUS: 50,
+  COMBO_WINDOW: 2.2,       // giây không giết thêm địch thì combo reset
+  COMBO_SCORE_PER_STACK: 2,
+  COMBO_SCORE_CAP_STACK: 20,
+  REMAINING_HP_BONUS_MAX: 200,
+  SPEED_BONUS: 150,
+  NO_DAMAGE_BONUS: 250,
+};
+
 const Game = {
   canvas: null,
   ctx: null,
@@ -36,9 +54,23 @@ const Game = {
     this.ctx = canvas.getContext("2d");
     Enemy.onHit = (x, y, amount, isCritical) => {
       const cfg = GAME_DATA.config.features || {};
-      if (cfg.showDamageNumbers === false) return;
       if (!this.run) return;
+      if (isCritical) {
+        this.run.critCount++;
+        this.run.score += SCORE_RULES.CRIT_BONUS;
+      }
+      if (cfg.showDamageNumbers === false) return;
       EffectManager.spawnDamageNumber(x, y, amount, isCritical);
+    };
+    Enemy.onBossEvent = (enemy, event) => {
+      if (!this.run) return;
+      if (event.type === "phase_change") {
+        EffectManager.spawnSpark(enemy.x, enemy.y, event.phase && event.phase.enrage ? "#ff5c3d" : "#e8c873", 14);
+        if (UI.onBossPhaseChanged) UI.onBossPhaseChanged(enemy, event.phase);
+      } else if (event.type === "ability_used") {
+        EffectManager.spawnSpark(enemy.x, enemy.y, "#e8c873", 10);
+        if (UI.onBossAbilityUsed) UI.onBossAbilityUsed(enemy, event.ability);
+      }
     };
   },
 
@@ -56,6 +88,7 @@ const Game = {
       defenseFlat: Math.round((heroDef.defense || 0) * scale),
       skillDef: heroDef.skillId ? GAME_DATA.skills[heroDef.skillId] : null,
       heroDef,
+      level,
     };
   },
 
@@ -63,7 +96,6 @@ const Game = {
   newRun(levelId, heroId) {
     rebuildGameData(); // luôn lấy dữ liệu mới nhất từ Admin trước khi vào trận
     EffectManager.reset();
-    this._prevHp = undefined;
     const levelDef = GAME_DATA.levels[levelId];
     this.levelDef = levelDef;
     const config = GAME_DATA.config;
@@ -81,6 +113,7 @@ const Game = {
       towerDamageMult: 1 + bonus.damagePct / 100,
       castleDefense: bonus.defenseFlat,
       skillDef: bonus.skillDef,
+      heroLevel: bonus.level || 1,
       skillCooldownRemaining: 0,
       towerBuffRemaining: 0,
       towerBuffFireRateMult: 1,
@@ -96,6 +129,17 @@ const Game = {
       enemies: [],
       towers: [],
       projectiles: [],
+      heroExpGained: 0,
+      // Score/Combo/3-Sao (Giai đoạn 3, Priority 5)
+      score: 0,
+      combo: 0,
+      comboTimer: 0,
+      maxCombo: 0,
+      critCount: 0,
+      bossKillCount: 0,
+      elapsedTime: 0,
+      noDamageTaken: true,
+      killCount: 0,
     };
     this._startLoop();
   },
@@ -104,7 +148,6 @@ const Game = {
   loadRun(snapshot) {
     rebuildGameData();
     EffectManager.reset();
-    this._prevHp = undefined;
     const levelDef = GAME_DATA.levels[snapshot.levelId];
     this.levelDef = levelDef;
     const bonus = this._heroBonuses(snapshot.heroId);
@@ -112,6 +155,7 @@ const Game = {
       towerDamageMult: 1 + bonus.damagePct / 100,
       castleDefense: bonus.defenseFlat,
       skillDef: bonus.skillDef,
+      heroLevel: bonus.level || 1,
       skillCooldownRemaining: 0,
       towerBuffRemaining: 0,
       towerBuffFireRateMult: 1,
@@ -123,6 +167,16 @@ const Game = {
       waveInProgress: false,
       paused: false,
       towers: [],
+      heroExpGained: snapshot.heroExpGained || 0,
+      score: snapshot.score || 0,
+      combo: 0, // combo không có ý nghĩa "tiếp tục" qua lần Continue - bắt đầu lại từ 0
+      comboTimer: 0,
+      maxCombo: snapshot.maxCombo || 0,
+      critCount: snapshot.critCount || 0,
+      bossKillCount: snapshot.bossKillCount || 0,
+      elapsedTime: snapshot.elapsedTime || 0,
+      noDamageTaken: snapshot.noDamageTaken !== false,
+      killCount: snapshot.killCount || 0,
     });
     for (const t of snapshot.towers || []) {
       const spot = levelDef.buildSpots[t.spotIndex];
@@ -149,6 +203,14 @@ const Game = {
       status: r.status,
       speed: r.speed,
       towers: r.towers.map(t => ({ spotIndex: t.spotIndex, typeId: t.typeId, level: t.level })),
+      heroExpGained: r.heroExpGained,
+      score: r.score,
+      maxCombo: r.maxCombo,
+      critCount: r.critCount,
+      bossKillCount: r.bossKillCount,
+      elapsedTime: r.elapsedTime,
+      noDamageTaken: r.noDamageTaken,
+      killCount: r.killCount,
     };
   },
 
@@ -188,6 +250,13 @@ const Game = {
   update(dt) {
     const r = this.run;
     const rewardMult = GAME_DATA.config.rewardMultiplier || 1;
+    r.elapsedTime += dt;
+
+    // đếm ngược Combo (mục XXVI): hết giờ mà không giết thêm địch -> reset
+    if (r.comboTimer > 0) {
+      r.comboTimer -= dt;
+      if (r.comboTimer <= 0) { r.comboTimer = 0; r.combo = 0; }
+    }
 
     // sinh quân theo hàng đợi
     if (r.spawnQueue.length > 0) {
@@ -203,12 +272,33 @@ const Game = {
     for (const e of r.enemies) {
       e.update(dt);
       if (e.reachedCastle) {
-        r.hp -= Math.max(0, e.def.damage - r.castleDefense);
+        const dmg = Math.max(0, e.getEffectiveDamage() - r.castleDefense);
+        if (dmg > 0) r.noDamageTaken = false; // mục XXV "No Damage Bonus"
+        r.hp -= dmg;
       }
       if (e.killed) {
         r.gold += Math.round(e.def.reward * rewardMult);
+        r.heroExpGained += Math.round((e.def.rewardExp || 0) * rewardMult);
+        r.killCount++;
         GameState.recordKill(1);
-        if (e.isBoss) r.bossKilledThisRun = true;
+        if (e.isBoss) { r.bossKilledThisRun = true; r.bossKillCount++; }
+        this._addKillScore(e);
+      }
+      // Boss Skill "Triệu Hồi": rút quân chờ sinh ra khỏi hàng đợi riêng của
+      // Boss rồi đẩy thẳng vào trận, xuất phát tại đúng vị trí Boss hiện tại.
+      if (e.isBoss && e.pendingSummons && e.pendingSummons.length > 0) {
+        for (const s of e.pendingSummons) {
+          const summonDef = GAME_DATA.enemyTypes[s.type];
+          if (!summonDef) continue; // Admin đã tắt/xoá loại địch này -> bỏ qua an toàn, không crash
+          for (let i = 0; i < (s.count || 1); i++) {
+            const ne = new Enemy(s.type, this.levelDef.path);
+            ne.wpIndex = e.wpIndex;
+            ne.x = e.x;
+            ne.y = e.y;
+            r.enemies.push(ne);
+          }
+        }
+        e.pendingSummons.length = 0;
       }
     }
     r.enemies = r.enemies.filter(e => e.alive);
@@ -231,19 +321,15 @@ const Game = {
     // cập nhật hiệu ứng hình ảnh (số sát thương, tia lửa chí mạng...)
     EffectManager.update(dt);
 
-    // rung nhẹ màn hình mỗi khi thành bị công phá
-    if (this._prevHp !== undefined && r.hp < this._prevHp) {
-      EffectManager.shakeScreen(4, 0.15);
-    }
-    this._prevHp = r.hp;
-
     // thua
     if (r.hp <= 0) {
       r.hp = 0;
       r.status = "lost";
       GameState.clearRunSnapshot();
       GameState.recordRunResult(false);
-      UI.onGameEnded(false);
+      this._grantHeroExp();
+      const stats = this._finalizeScore(false);
+      UI.onGameEnded(false, stats);
       return;
     }
 
@@ -251,6 +337,7 @@ const Game = {
     if (r.waveInProgress && r.spawnQueue.length === 0 && r.enemies.length === 0) {
       r.waveInProgress = false;
       const waveNumber = r.waveIndex + 1;
+      r.score += SCORE_RULES.WAVE_CLEAR_BONUS;
       GameState.updateBestWave(r.levelId, waveNumber);
       const waveRewardDef = GAME_DATA.rewards ? GAME_DATA.rewards.r_wave_clear : null;
       if (waveRewardDef) GameState.addPersistentReward(waveRewardDef.gold || 0, waveRewardDef.exp || 0);
@@ -263,17 +350,87 @@ const Game = {
         const hpPercent = Math.round((r.hp / r.maxHp) * 100);
         GameState.recordRunResult(true);
         GameState.addPersistentReward(this.levelDef.rewardGold || 0, this.levelDef.rewardExp || 0);
+        this._grantHeroExp();
+        const stats = this._finalizeScore(true);
         const stageQuests = QuestService.evaluate("STAGE_CLEARED", { stageId: r.levelId, hpPercent });
         let bossQuests = [];
         if (r.bossKilledThisRun) bossQuests = QuestService.evaluate("BOSS_KILLED", {});
         UI.onQuestsCompleted([...stageQuests, ...bossQuests]);
         this._unlockNextStages(r.levelId);
-        UI.onGameEnded(true);
+        UI.onGameEnded(true, stats);
       } else {
         UI.onWaveCleared();
         this.persistRun();
       }
     }
+  },
+
+  /* Cộng điểm + Combo thật khi hạ 1 địch (mục XXV-XXVI). */
+  _addKillScore(e) {
+    const r = this.run;
+    r.combo += 1;
+    r.comboTimer = SCORE_RULES.COMBO_WINDOW;
+    r.maxCombo = Math.max(r.maxCombo, r.combo);
+    const comboStacks = Math.min(r.combo, SCORE_RULES.COMBO_SCORE_CAP_STACK);
+    const killScore = SCORE_RULES.KILL_BASE + Math.round((e.def.reward || 0) * SCORE_RULES.KILL_REWARD_MULT);
+    const comboScore = comboStacks * SCORE_RULES.COMBO_SCORE_PER_STACK;
+    r.score += killScore + comboScore;
+    if (e.isBoss) r.score += SCORE_RULES.BOSS_KILL_BONUS;
+  },
+
+  /* Cộng Hero EXP thật đã tích luỹ trong trận (mục XIX) vào tiến trình
+     dài hạn của tướng đang dùng. Gọi đúng 1 lần khi trận kết thúc (thắng
+     hoặc thua), rồi xoá heroExpGained để không cộng lại nếu update() còn
+     chạy thêm khung hình nào đó trước khi màn hình chuyển cảnh. */
+  _grantHeroExp() {
+    const r = this.run;
+    if (!r || !r.heroId || r.heroExpGained <= 0) return;
+    const gained = r.heroExpGained;
+    r.heroExpGained = 0;
+    const result = GameState.addHeroExp(r.heroId, gained);
+    if (result && result.leveledUp && UI.onHeroLeveledUp) {
+      UI.onHeroLeveledUp(r.heroId, result.level);
+    }
+  },
+
+  /* Xác định số sao đạt được khi THẮNG (mục V), đọc điều kiện Admin cấu
+     hình trên từng Stage (starConditions), có fallback an toàn nếu Admin
+     xoá/thiếu field để không bao giờ crash. */
+  _computeStars(levelDef, r, hpPercent) {
+    const cond = levelDef.starConditions || {};
+    let stars = cond.oneStar === false ? 0 : 1;
+    if (hpPercent >= (cond.twoStarCastleHpPercent ?? 50)) stars = 2;
+    const hitThreeByHp = hpPercent >= (cond.threeStarCastleHpPercent ?? 80);
+    const hitThreeByScore = r.score >= (cond.threeStarScore ?? Infinity);
+    if (hitThreeByHp || hitThreeByScore) stars = 3;
+    return stars;
+  },
+
+  /* Tính điểm thưởng cuối trận + lưu kỷ lục, trả về stats cho Victory/
+     Defeat Screen (mục LIII-LIV). Gọi đúng 1 lần khi trận kết thúc. */
+  _finalizeScore(won) {
+    const r = this.run;
+    const hpPercent = Math.max(0, Math.round((r.hp / r.maxHp) * 100));
+    let stars = 0;
+    if (won) {
+      r.score += Math.round((r.hp / r.maxHp) * SCORE_RULES.REMAINING_HP_BONUS_MAX);
+      if (r.elapsedTime <= (this.levelDef.targetTime || Infinity)) r.score += SCORE_RULES.SPEED_BONUS;
+      if (r.noDamageTaken) r.score += SCORE_RULES.NO_DAMAGE_BONUS;
+      stars = this._computeStars(this.levelDef, r, hpPercent);
+      GameState.recordStageResult(r.levelId, { stars, score: r.score, time: Math.round(r.elapsedTime) });
+    } else {
+      GameState.recordStageResult(r.levelId, { stars: 0, score: r.score });
+    }
+    return {
+      won, stars,
+      score: Math.round(r.score),
+      hpPercent,
+      killCount: r.killCount,
+      bossKillCount: r.bossKillCount,
+      elapsedTime: Math.round(r.elapsedTime),
+      maxCombo: r.maxCombo,
+      critCount: r.critCount,
+    };
   },
 
   _unlockNextStages(clearedStageId) {
@@ -351,16 +508,28 @@ const Game = {
     const r = this.run;
     if (!r || !r.skillDef || r.skillCooldownRemaining > 0 || r.status !== "playing") return false;
     const skill = r.skillDef;
+    // Kỹ năng chủ động scale theo Level tướng (mục XXI): mỗi cấp +15% hiệu
+    // lực, cùng cách hp/damage/defense passive đã scale ở _heroBonuses.
+    const skillScale = 1 + 0.15 * ((r.heroLevel || 1) - 1);
     switch (skill.effect) {
-      case "damage_all":
-        for (const e of r.enemies) if (e.alive) e.takeDamage(skill.damage);
+      case "damage_all": {
+        const dmg = (skill.damage || 0) * skillScale;
+        for (const e of r.enemies) {
+          if (!e.alive) continue;
+          e.takeDamage(dmg);
+          EffectManager.spawnSpark(e.x, e.y, "#ff5c3d", 5);
+        }
         break;
-      case "heal_castle":
-        r.hp = Math.min(r.maxHp, r.hp + skill.heal);
+      }
+      case "heal_castle": {
+        const healAmount = (skill.heal || 0) * skillScale;
+        r.hp = Math.min(r.maxHp, r.hp + healAmount);
         break;
+      }
       case "buff_attack_speed":
         r.towerBuffRemaining = skill.duration;
-        r.towerBuffFireRateMult = 1 + (skill.value || 0);
+        r.towerBuffFireRateMult = 1 + (skill.value || 0) * skillScale;
+        for (const t of r.towers) EffectManager.spawnSpark(t.x, t.y, "#e8c873", 4);
         break;
       default:
         return false;
@@ -395,13 +564,8 @@ const Game = {
     const w = GAME_DATA.config.canvasWidth;
     const h = GAME_DATA.config.canvasHeight;
     ctx.clearRect(0, 0, w, h);
-
-    const shake = this.run ? EffectManager.getShakeOffset() : { x: 0, y: 0 };
-    ctx.save();
-    if (shake.x || shake.y) ctx.translate(shake.x, shake.y);
-
     this._drawBackground(ctx, w, h);
-    if (!this.levelDef) { ctx.restore(); return; }
+    if (!this.levelDef) return;
     this._drawPath(ctx);
     this._drawBuildSpots(ctx);
     this._drawCastle(ctx);
@@ -414,19 +578,7 @@ const Game = {
       for (const p of this.run.projectiles) p.draw(ctx);
       EffectManager.draw(ctx);
     }
-    this._drawVignette(ctx, w, h);
-    ctx.restore();
     if (cfg.showFps) this._drawFps(ctx);
-  },
-
-  /* Viền tối nhẹ quanh mép khung hình - tạo chiều sâu điện ảnh,
-     giống phong cách game thương mại thay vì canvas phẳng. */
-  _drawVignette(ctx, w, h) {
-    const grad = ctx.createRadialGradient(w / 2, h / 2, h * 0.35, w / 2, h / 2, h * 0.75);
-    grad.addColorStop(0, "rgba(0,0,0,0)");
-    grad.addColorStop(1, "rgba(0,0,0,.35)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
   },
 
   _drawFps(ctx) {
@@ -438,128 +590,24 @@ const Game = {
     ctx.fillText("FPS: " + this.currentFps(), 14, 22);
   },
 
-  /* Bảng chủ đề hình nền theo từng màn chơi — mỗi thời kỳ lịch sử một
-     bầu không khí riêng, thay vì dùng chung 1 nền tĩnh cho mọi màn. */
-  _bgThemes: {
-    hoa_lu: { sky: ["#e9d9ab", "#d8c48c", "#6e8f4e", "#4d6b39"], split: 0.45, kind: "mountain" },
-    dai_la: { sky: ["#e8c9a0", "#d1a56e", "#7a5a3a", "#4a3521"], split: 0.42, kind: "city" },
-    bach_dang: { sky: ["#bfe0e6", "#8fc4d4", "#1f4a5a", "#0f2c38"], split: 0.4, kind: "water" },
-    chi_lang: { sky: ["#d9c8a8", "#b8a074", "#5c5548", "#3a352c"], split: 0.44, kind: "mountain" },
-    binh_lo: { sky: ["#c9e0d8", "#8fbfae", "#2f5d50", "#1a382f"], split: 0.4, kind: "water" },
-    thang_long: { sky: ["#f0d9a0", "#e0a860", "#7a2f2f", "#4a1a1a"], split: 0.42, kind: "city" },
-    chuong_duong: { sky: ["#cfe2ea", "#9fc0cf", "#2f4a5a", "#1a2c38"], split: 0.4, kind: "water" },
-    van_kiep: { sky: ["#a8c8d8", "#6f9fb8", "#12303f", "#081820"], split: 0.38, kind: "stakes" },
-    dong_da: { sky: ["#f0b48a", "#d1704a", "#5a1f1f", "#301010"], split: 0.4, kind: "battlefield" },
-  },
-
   _drawBackground(ctx, w, h) {
-    const theme = (this.levelDef && this._bgThemes[this.levelDef.background]) || this._bgThemes.hoa_lu;
+    // nền trời - đồng lúa
     const sky = ctx.createLinearGradient(0, 0, 0, h);
-    sky.addColorStop(0, theme.sky[0]);
-    sky.addColorStop(theme.split - 0.01, theme.sky[1]);
-    sky.addColorStop(theme.split, theme.sky[2]);
-    sky.addColorStop(1, theme.sky[3]);
+    sky.addColorStop(0, "#e9d9ab");
+    sky.addColorStop(0.45, "#d8c48c");
+    sky.addColorStop(0.46, "#6e8f4e");
+    sky.addColorStop(1, "#4d6b39");
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
 
-    switch (theme.kind) {
-      case "water":
-        this._drawWater(ctx, w, h, theme.split);
-        break;
-      case "stakes":
-        this._drawWater(ctx, w, h, theme.split);
-        this._drawStakes(ctx, w, h, theme.split);
-        break;
-      case "city":
-        this._drawCitySkyline(ctx, w, h, theme.split);
-        break;
-      case "battlefield":
-        this._drawBattlefieldHaze(ctx, w, h, theme.split);
-        break;
-      default:
-        ctx.fillStyle = "rgba(90,95,80,.55)";
-        this._drawMountain(ctx, 60, h * theme.split, 90);
-        this._drawMountain(ctx, 220, h * theme.split + 10, 70);
-        this._drawMountain(ctx, 850, h * theme.split - 10, 100);
-        this._drawMountain(ctx, 700, h * theme.split, 60);
-        ctx.fillStyle = "rgba(70,75,62,.5)";
-        this._drawMountain(ctx, 500, h * theme.split + 15, 55);
-    }
-  },
-
-  _drawWater(ctx, w, h, split) {
-    const baseY = h * split;
-    ctx.strokeStyle = "rgba(255,255,255,.18)";
-    ctx.lineWidth = 2;
-    const t = performance.now() / 1000;
-    for (let row = 0; row < 5; row++) {
-      const y = baseY + 18 + row * 26;
-      if (y > h) break;
-      ctx.beginPath();
-      for (let x = -20; x <= w + 20; x += 24) {
-        const yy = y + Math.sin(x * 0.03 + t * 1.3 + row) * 3;
-        if (x === -20) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
-      }
-      ctx.globalAlpha = 0.5 - row * 0.07;
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-  },
-
-  _drawStakes(ctx, w, h, split) {
-    // cọc gỗ nhọn cắm dưới sông, đặc trưng kế Ngô Quyền / Bạch Đằng 1288
-    const baseY = h * split;
-    ctx.fillStyle = "rgba(40,28,18,.75)";
-    const positions = [40, 130, 300, 380, 520, 610, 760, 880];
-    for (const x of positions) {
-      const y = baseY + 30 + (x % 3) * 14;
-      ctx.beginPath();
-      ctx.moveTo(x - 5, y + 22);
-      ctx.lineTo(x + 5, y + 22);
-      ctx.lineTo(x, y);
-      ctx.closePath();
-      ctx.fill();
-    }
-  },
-
-  _drawCitySkyline(ctx, w, h, split) {
-    const baseY = h * split;
-    ctx.fillStyle = "rgba(40,25,18,.6)";
-    const buildings = [
-      { x: 40, w: 60, hgt: 70 }, { x: 130, w: 40, hgt: 50 },
-      { x: 640, w: 70, hgt: 90 }, { x: 760, w: 50, hgt: 60 },
-      { x: 860, w: 55, hgt: 75 },
-    ];
-    for (const b of buildings) {
-      ctx.fillRect(b.x, baseY - b.hgt, b.w, b.hgt);
-      // mái cong kiểu đình chùa
-      ctx.beginPath();
-      ctx.moveTo(b.x - 8, baseY - b.hgt);
-      ctx.lineTo(b.x + b.w / 2, baseY - b.hgt - 16);
-      ctx.lineTo(b.x + b.w + 8, baseY - b.hgt);
-      ctx.closePath();
-      ctx.fill();
-    }
-  },
-
-  _drawBattlefieldHaze(ctx, w, h, split) {
-    // gò đất + khói súng mờ đặc trưng chiến trường Đống Đa
-    const baseY = h * split;
-    ctx.fillStyle = "rgba(60,30,20,.5)";
-    this._drawMountain(ctx, 150, baseY + 20, 65);
-    this._drawMountain(ctx, 780, baseY + 10, 75);
-    const t = performance.now() / 1000;
-    for (let i = 0; i < 4; i++) {
-      const x = (i * 260 + (t * 12) % 260) % w;
-      const y = baseY - 20 - i * 8;
-      const grad = ctx.createRadialGradient(x, y, 4, x, y, 60);
-      grad.addColorStop(0, "rgba(120,110,100,.28)");
-      grad.addColorStop(1, "rgba(120,110,100,0)");
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(x, y, 60, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // núi đá vôi cách điệu (đặc trưng Hoa Lư - Ninh Bình)
+    ctx.fillStyle = "rgba(90,95,80,.55)";
+    this._drawMountain(ctx, 60, 240, 90);
+    this._drawMountain(ctx, 220, 250, 70);
+    this._drawMountain(ctx, 850, 230, 100);
+    this._drawMountain(ctx, 700, 240, 60);
+    ctx.fillStyle = "rgba(70,75,62,.5)";
+    this._drawMountain(ctx, 500, 255, 55);
   },
 
   _drawMountain(ctx, cx, baseY, size) {
@@ -616,89 +664,24 @@ const Game = {
 
   _drawCastle(ctx) {
     const c = this.levelDef.castle;
-    const t = performance.now() / 1000;
-
-    // bóng đổ nền
-    ctx.beginPath();
-    ctx.ellipse(c.x, c.y + 34, 50, 12, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(0,0,0,.3)";
-    ctx.fill();
-
-    // tường thành (gradient thay vì màu phẳng)
-    const wallGrad = ctx.createLinearGradient(c.x, c.y - 30, c.x, c.y + 30);
-    wallGrad.addColorStop(0, "#9a3040");
-    wallGrad.addColorStop(1, "#5a1620");
-    ctx.fillStyle = wallGrad;
+    // tường thành
+    ctx.fillStyle = "#7a1f2b";
     ctx.fillRect(c.x - 42, c.y - 30, 84, 60);
     ctx.strokeStyle = "#c9a24a";
     ctx.lineWidth = 3;
     ctx.strokeRect(c.x - 42, c.y - 30, 84, 60);
-    // đường chỉ trang trí
-    ctx.strokeStyle = "rgba(232,200,115,.4)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(c.x - 36, c.y - 24, 72, 48);
-
     // răng thành
     ctx.fillStyle = "#c9a24a";
     for (let i = -3; i <= 3; i++) {
       ctx.fillRect(c.x + i * 12 - 4, c.y - 40, 8, 12);
     }
     // cổng
-    const gateGrad = ctx.createLinearGradient(c.x - 10, c.y - 4, c.x + 10, c.y + 30);
-    gateGrad.addColorStop(0, "#3a281c");
-    gateGrad.addColorStop(1, "#1a1109");
-    ctx.fillStyle = gateGrad;
+    ctx.fillStyle = "#2e2119";
     ctx.fillRect(c.x - 10, c.y - 4, 20, 34);
-    ctx.strokeStyle = "rgba(201,162,74,.5)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(c.x - 10, c.y - 4, 20, 34);
-
-    // đèn lồng le lói hai bên cổng
-    const flicker = 0.6 + Math.sin(t * 6) * 0.2;
-    for (const dx of [-22, 22]) {
-      const glow = ctx.createRadialGradient(c.x + dx, c.y + 10, 0, c.x + dx, c.y + 10, 10);
-      glow.addColorStop(0, `rgba(255,200,110,${flicker})`);
-      glow.addColorStop(1, "rgba(255,200,110,0)");
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(c.x + dx, c.y + 10, 10, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // cột cờ + lá cờ tung bay (dùng sóng sin thay vì icon tĩnh)
-    const poleX = c.x;
-    const poleTopY = c.y - 62;
-    ctx.strokeStyle = "#8a6a3a";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(poleX, c.y - 40);
-    ctx.lineTo(poleX, poleTopY);
-    ctx.stroke();
-
-    ctx.save();
-    ctx.translate(poleX, poleTopY);
-    ctx.beginPath();
-    ctx.moveTo(0, -2);
-    const waveAmp = 5;
-    for (let i = 0; i <= 8; i++) {
-      const fx = i * 4.5;
-      const fy = -2 + Math.sin(t * 5 - i * 0.9) * waveAmp * (i / 8) - 12;
-      ctx.lineTo(fx, fy);
-    }
-    for (let i = 8; i >= 0; i--) {
-      const fx = i * 4.5;
-      const fy = 6 + Math.sin(t * 5 - i * 0.9) * waveAmp * (i / 8) - 12;
-      ctx.lineTo(fx, fy);
-    }
-    ctx.closePath();
-    const flagGrad = ctx.createLinearGradient(0, -12, 36, -12);
-    flagGrad.addColorStop(0, "#e8c873");
-    flagGrad.addColorStop(1, "#c9a24a");
-    ctx.fillStyle = flagGrad;
-    ctx.fill();
-    ctx.strokeStyle = "#7a1f2b";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.restore();
+    // cờ
+    ctx.fillStyle = "#e8c873";
+    ctx.font = "26px serif";
+    ctx.textAlign = "center";
+    ctx.fillText("🏯", c.x, c.y - 46);
   },
 };

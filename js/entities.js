@@ -23,6 +23,8 @@ function nextEntityId() { return ++__entityId; }
 class Enemy {
   // hook toàn cục (được game.js gán) - dùng để hiện số sát thương bay lên
   static onHit = null;
+  // hook toàn cục (được game.js gán) - Boss đổi phase / dùng skill
+  static onBossEvent = null;
 
   constructor(typeId, path) {
     const def = GAME_DATA.enemyTypes[typeId];
@@ -47,7 +49,25 @@ class Enemy {
        (refresh), không xếp chồng nhiều bản sao cùng loại. */
     this.statusEffects = [];
     this._effectiveSpeedMult = 1;
+    this._statusSpeedMult = 1;
     this._stunned = false;
+
+    /* Boss Engine (Giai đoạn 3, Priority 2): Phase theo %HP + Skill thật
+       (self_buff / summon / heal_self), đọc từ def.phases/def.abilities
+       do DataService.buildGameData() trộn vào từ collection "bosses". */
+    if (this.isBoss) {
+      this.phases = def.phases || [];
+      this.abilities = (def.abilities || []).map((a) => ({
+        ...a,
+        cooldownRemaining: 0,
+        triggeredOnce: false,
+        _intervalTimer: 0,
+      }));
+      this.currentPhase = null;
+      this._bossSpeedMult = 1;
+      this._bossDamageMult = 1;
+      this.pendingSummons = []; // Game.update() rút ra để spawn quân, rồi xoá
+    }
   }
 
   /* API hợp nhất cho mọi hiệu ứng trạng thái tháp/kỹ năng gây ra.
@@ -103,22 +123,100 @@ class Enemy {
           while (s.tickAcc >= 1 && this.alive) {
             s.tickAcc -= 1;
             this.takeDamage(s.value, { isDot: true, sourceId: s.sourceId });
-            if (typeof EffectManager !== "undefined") {
-              EffectManager.spawnStatusPuff(this.x, this.y, s.type);
-            }
           }
           break;
       }
       if (s.timer <= 0) this.statusEffects.splice(i, 1);
     }
-    this._effectiveSpeedMult = Math.max(0, speedMult);
+    this._statusSpeedMult = Math.max(0, speedMult);
     this._stunned = stunned;
+  }
+
+  /* Boss Phase Engine (mục XIV-XVI): xác định phase hiện tại theo %HP,
+     bắn sự kiện phase_change cho UI (thanh máu Boss/hiệu ứng), rồi xét
+     từng ability xem có kích hoạt hay không. Không "giả" tính năng: mọi
+     hiệu ứng ở đây đều thật sự làm thay đổi speed/damage/HP/spawn quân. */
+  _processBossAbilities(dt) {
+    if (!this.alive) return;
+    const pct = Math.max(0, (this.hp / this.maxHp) * 100);
+
+    // 1) Xác định phase theo %HP còn lại (hpToPct <= pct <= hpFromPct)
+    const phase = this.phases.find((p) => pct <= p.hpFromPct && pct > p.hpToPct) ||
+      this.phases[this.phases.length - 1] || null;
+    if (phase && phase !== this.currentPhase) {
+      this.currentPhase = phase;
+      if (Enemy.onBossEvent) Enemy.onBossEvent(this, { type: "phase_change", phase });
+    }
+
+    // 2) Duyệt qua từng skill thật của Boss
+    let abilitySpeedBonus = 0;
+    let abilityDamageBonus = 0;
+    for (const a of this.abilities) {
+      if (a.cooldownRemaining > 0) a.cooldownRemaining -= dt;
+      const trig = a.trigger || {};
+      let shouldFire = false;
+      let continuousActive = false;
+
+      if (trig.type === "hp_below") {
+        if (pct <= trig.percent) {
+          continuousActive = true;
+          if ((!a.once || !a.triggeredOnce) && a.cooldownRemaining <= 0) shouldFire = true;
+        }
+      } else if (trig.type === "hp_above") {
+        if (pct >= trig.percent) {
+          continuousActive = true;
+          if (a.continuous) {
+            // buff chỉ tồn tại khi điều kiện còn đúng (vd. Xung Phong Ải Hẹp)
+            if (a.effect === "self_buff") {
+              abilitySpeedBonus += a.speedBonus || 0;
+              abilityDamageBonus += a.damageBonus || 0;
+            }
+          } else if ((!a.once || !a.triggeredOnce) && a.cooldownRemaining <= 0) {
+            shouldFire = true;
+          }
+        }
+      } else if (trig.type === "interval") {
+        a._intervalTimer += dt;
+        if (a._intervalTimer >= (trig.seconds || 5) && a.cooldownRemaining <= 0) {
+          shouldFire = true;
+          a._intervalTimer = 0;
+        }
+      }
+
+      if (shouldFire) {
+        a.triggeredOnce = true;
+        if (a.cooldown) a.cooldownRemaining = a.cooldown;
+        this._fireBossAbility(a);
+      }
+      // self_buff kiểu "once" (không continuous) cộng dồn vĩnh viễn sau khi kích hoạt
+      if (a.effect === "self_buff" && a.triggeredOnce && !a.continuous) {
+        abilitySpeedBonus += a.speedBonus || 0;
+        abilityDamageBonus += a.damageBonus || 0;
+      }
+    }
+
+    const phaseSpeedMult = phase ? phase.speedMult : 1;
+    const phaseDamageMult = phase ? phase.damageMult : 1;
+    this._bossSpeedMult = phaseSpeedMult * (1 + abilitySpeedBonus);
+    this._bossDamageMult = phaseDamageMult * (1 + abilityDamageBonus);
+  }
+
+  _fireBossAbility(a) {
+    if (a.effect === "summon") {
+      this.pendingSummons.push({ type: a.summonType, count: a.summonCount || 1 });
+    } else if (a.effect === "heal_self") {
+      this.hp = Math.min(this.maxHp, this.hp + this.maxHp * ((a.healPercent || 0) / 100));
+    }
+    // "self_buff" được cộng vào bộ đệm speed/damage ngay trong _processBossAbilities
+    if (Enemy.onBossEvent) Enemy.onBossEvent(this, { type: "ability_used", ability: a });
   }
 
   update(dt) {
     if (!this.alive) return;
     this._processStatusEffects(dt);
     if (!this.alive) return; // DOT (burn/bleed) có thể vừa giết địch
+    if (this.isBoss) this._processBossAbilities(dt);
+    this._effectiveSpeedMult = this._statusSpeedMult * (this.isBoss ? this._bossSpeedMult : 1);
     if (this._stunned) return; // đứng yên hoàn toàn khi bị Stun
     const target = this.path[this.wpIndex + 1];
     if (!target) {
@@ -138,6 +236,11 @@ class Enemy {
       this.x += (dx / dist) * step;
       this.y += (dy / dist) * step;
     }
+  }
+
+  /* Sát thương Boss gây cho thành khi đến đích, đã gồm buff từ Skill/Phase. */
+  getEffectiveDamage() {
+    return this.isBoss ? Math.round(this.def.damage * (this._bossDamageMult || 1)) : this.def.damage;
   }
 
   /* Pipeline sát thương thật (Giai đoạn 3):
@@ -164,9 +267,6 @@ class Enemy {
     if (this.hp <= 0 && this.alive) {
       this.alive = false;
       this.killed = true;
-      if (typeof EffectManager !== "undefined") {
-        EffectManager.spawnDeathBurst(this.x, this.y, this.def.color, this.isBoss);
-      }
     }
   }
 
@@ -183,38 +283,10 @@ class Enemy {
 
   draw(ctx, showHpBar) {
     const r = this.def.radius;
-    const t = (this._animT = (this._animT || Math.random() * 10) + 1 / 60);
-    const bob = this._stunned ? 0 : Math.sin(t * 8 + this.id) * 1.4;
-
-    // hào quang boss (vòng quầng đỏ mờ pulsing phía sau)
-    if (this.isBoss) {
-      const pulse = 0.55 + Math.sin(t * 3) * 0.18;
-      const glow = ctx.createRadialGradient(this.x, this.y, r * 0.4, this.x, this.y, r * 2.1);
-      glow.addColorStop(0, `rgba(232,200,115,${0.28 * pulse})`);
-      glow.addColorStop(1, "rgba(232,200,115,0)");
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, r * 2.1, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // bóng đổ dưới chân
+    // thân
     ctx.beginPath();
-    ctx.ellipse(this.x, this.y + r * 0.75, r * 0.85, r * 0.32, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(0,0,0,.28)";
-    ctx.fill();
-
-    // thân (gradient để có chiều sâu thay vì fill phẳng)
-    const bodyY = this.y + bob;
-    const grad = ctx.createRadialGradient(
-      this.x - r * 0.3, bodyY - r * 0.35, r * 0.15,
-      this.x, bodyY, r * 1.15
-    );
-    grad.addColorStop(0, this._lighten(this.def.color, 28));
-    grad.addColorStop(1, this.def.color);
-    ctx.beginPath();
-    ctx.arc(this.x, bodyY, r, 0, Math.PI * 2);
-    ctx.fillStyle = grad;
+    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = this.def.color;
     ctx.fill();
     ctx.lineWidth = this.isBoss ? 3 : 2;
     ctx.strokeStyle = this.isBoss ? "#e8c873" : "rgba(0,0,0,.4)";
@@ -222,7 +294,7 @@ class Enemy {
     // vòng xanh khi đang bị làm chậm/đóng băng/choáng
     if (this._effectiveSpeedMult < 1 || this._stunned) {
       ctx.beginPath();
-      ctx.arc(this.x, bodyY, r + 4, 0, Math.PI * 2);
+      ctx.arc(this.x, this.y, r + 4, 0, Math.PI * 2);
       ctx.strokeStyle = this._stunned ? "rgba(232,200,115,.85)" : "rgba(120,200,230,.8)";
       ctx.lineWidth = 2;
       ctx.setLineDash([3, 3]);
@@ -233,45 +305,26 @@ class Enemy {
     ctx.font = `${r}px serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(this.def.icon, this.x, bodyY);
+    ctx.fillText(this.def.icon, this.x, this.y);
     // huy hiệu trạng thái (Burn/Freeze/Slow/Stun/Bleed) phía trên đầu
     if (this.statusEffects.length > 0) {
       ctx.font = "11px serif";
       let ix = this.x - (this.statusEffects.length - 1) * 6;
       for (const s of this.statusEffects) {
         const icon = Enemy._statusIcon(s.type);
-        if (icon) ctx.fillText(icon, ix, bodyY - r - 16);
+        if (icon) ctx.fillText(icon, ix, this.y - r - 16);
         ix += 12;
       }
     }
-    // thanh máu (viền + gradient để trông sắc nét, chuyên nghiệp hơn)
+    // thanh máu
     if (showHpBar !== false) {
       const barW = r * 2.2;
       const pct = Math.max(0, this.hp / this.maxHp);
-      const barY = bodyY - r - 10;
-      ctx.fillStyle = "rgba(0,0,0,.55)";
-      ctx.fillRect(this.x - barW / 2 - 1, barY - 1, barW + 2, 7);
-      ctx.fillStyle = "rgba(0,0,0,.4)";
-      ctx.fillRect(this.x - barW / 2, barY, barW, 5);
-      const hpGrad = ctx.createLinearGradient(this.x - barW / 2, 0, this.x + barW / 2, 0);
-      if (pct > 0.4) { hpGrad.addColorStop(0, "#5a9e4f"); hpGrad.addColorStop(1, "#9bde6a"); }
-      else { hpGrad.addColorStop(0, "#8a2f2f"); hpGrad.addColorStop(1, "#e0655f"); }
-      ctx.fillStyle = hpGrad;
-      ctx.fillRect(this.x - barW / 2, barY, barW * pct, 5);
+      ctx.fillStyle = "rgba(0,0,0,.5)";
+      ctx.fillRect(this.x - barW / 2, this.y - r - 10, barW, 5);
+      ctx.fillStyle = pct > 0.4 ? "#7bc96f" : "#c94f4f";
+      ctx.fillRect(this.x - barW / 2, this.y - r - 10, barW * pct, 5);
     }
-  }
-
-  /* Làm sáng một màu hex thêm `amt` đơn vị (dùng cho gradient thân địch/tháp) */
-  _lighten(hex, amt) {
-    if (!hex || hex[0] !== "#") return hex;
-    const num = parseInt(hex.slice(1), 16);
-    let r = (num >> 16) + amt;
-    let g = ((num >> 8) & 0xff) + amt;
-    let b = (num & 0xff) + amt;
-    r = Math.min(255, Math.max(0, r));
-    g = Math.min(255, Math.max(0, g));
-    b = Math.min(255, Math.max(0, b));
-    return `rgb(${r},${g},${b})`;
   }
 }
 
@@ -337,64 +390,24 @@ class Tower {
     const damageMult = (buff && buff.damageMult) || 1;
     projectiles.push(new Projectile(this, target, damageMult));
     this.cooldown = 1 / (this.def.fireRate * fireRateMult);
-    this._recoil = 1;
-    if (typeof EffectManager !== "undefined") {
-      const angle = Math.atan2(target.y - this.y, target.x - this.x);
-      EffectManager.spawnMuzzleFlash(
-        this.x + Math.cos(angle) * 18,
-        this.y + Math.sin(angle) * 18,
-        angle,
-        this.def.color
-      );
-    }
   }
 
   draw(ctx) {
-    // hồi phục hiệu ứng "giật lùi" nhẹ sau mỗi phát bắn để trông sống động
-    if (this._recoil === undefined) this._recoil = 0;
-    this._recoil = Math.max(0, this._recoil - 0.08);
-    const scale = 1 - this._recoil * 0.06;
-
-    // bệ tháp: bóng + vòng nền gradient thay vì khối phẳng đơn sắc
     ctx.beginPath();
-    ctx.ellipse(this.x, this.y + 16, 22, 8, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(0,0,0,.3)";
+    ctx.arc(this.x, this.y, 20, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(46,33,25,.9)";
     ctx.fill();
-
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    ctx.scale(scale, scale);
-    const baseGrad = ctx.createRadialGradient(-5, -6, 3, 0, 0, 22);
-    baseGrad.addColorStop(0, "#4a382a");
-    baseGrad.addColorStop(1, "#241a12");
-    ctx.beginPath();
-    ctx.arc(0, 0, 20, 0, Math.PI * 2);
-    ctx.fillStyle = baseGrad;
-    ctx.fill();
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2;
     ctx.strokeStyle = this.def.color;
     ctx.stroke();
-    // vòng thếp vàng mỏng bên trong cho cảm giác "cao cấp"
-    ctx.beginPath();
-    ctx.arc(0, 0, 16, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(201,162,74,.35)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
     ctx.font = "22px serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(this.def.icon, 0, 0);
-    ctx.restore();
-
+    ctx.fillText(this.def.icon, this.x, this.y);
     if (this.level > 1) {
-      ctx.font = "bold 11px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = "rgba(0,0,0,.55)";
-      ctx.fillRect(this.x - 14, this.y + 19, 28, 13);
+      ctx.font = "11px sans-serif";
       ctx.fillStyle = "#e8c873";
-      ctx.fillText("Lv" + this.level, this.x, this.y + 26);
+      ctx.fillText("Lv" + this.level, this.x, this.y + 24);
     }
   }
 
@@ -463,9 +476,6 @@ class Projectile {
     const finalDamage = this.baseDamage * (isCritical ? this.criticalMultiplier : 1);
     const meta = { isCritical, armorPen: this.armorPenetration, sourceId: this.sourceId };
     if (this.splashRadius > 0) {
-      if (typeof EffectManager !== "undefined") {
-        EffectManager.spawnExplosion(target.x, target.y, this.splashRadius, this.color);
-      }
       for (const e of enemies) {
         if (!e.alive) continue;
         const d = Math.hypot(e.x - target.x, e.y - target.y);
@@ -475,9 +485,6 @@ class Projectile {
         }
       }
     } else {
-      if (typeof EffectManager !== "undefined") {
-        EffectManager.spawnImpactRing(target.x, target.y, this.color, false);
-      }
       target.takeDamage(finalDamage, meta);
       this._applyEffectIfAny(target);
     }
@@ -495,33 +502,9 @@ class Projectile {
   }
 
   draw(ctx) {
-    // vệt sáng nhỏ phía sau đạn để tạo cảm giác tốc độ
-    if (this._prevX !== undefined) {
-      ctx.strokeStyle = this.color;
-      ctx.globalAlpha = 0.35;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(this._prevX, this._prevY);
-      ctx.lineTo(this.x, this.y);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-    this._prevX = this.x;
-    this._prevY = this.y;
-
-    // quầng sáng nhẹ quanh đầu đạn
-    const glow = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, 8);
-    glow.addColorStop(0, "rgba(255,255,255,.9)");
-    glow.addColorStop(0.35, this.color);
-    glow.addColorStop(1, "rgba(255,255,255,0)");
     ctx.beginPath();
-    ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
-    ctx.fillStyle = glow;
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, 3.2, 0, Math.PI * 2);
-    ctx.fillStyle = "#fff8e6";
+    ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = this.color;
     ctx.fill();
   }
 }

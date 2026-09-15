@@ -99,6 +99,12 @@ const Components = (() => {
       return `<label class="form-label" for="${id}">${field.label}</label>
         <textarea class="form-input" id="${id}" name="${field.key}" rows="2">${escapeHtml(val)}</textarea>`;
     }
+    if (field.type === "json") {
+      const pretty = typeof val === "string" ? val : JSON.stringify(val ?? [], null, 2);
+      return `<label class="form-label" for="${id}">${field.label}</label>
+        <textarea class="form-input form-input-mono" id="${id}" name="${field.key}" rows="6">${escapeHtml(pretty)}</textarea>
+        ${field.hint ? `<p class="field-hint">${field.hint}</p>` : ""}`;
+    }
     if (field.type === "checkbox") {
       return `<label class="form-checkbox-row" for="${id}">
         <input type="checkbox" id="${id}" name="${field.key}" ${val ? "checked" : ""}>
@@ -130,6 +136,7 @@ const Components = (() => {
       if (!el) continue;
       if (f.type === "checkbox") values[f.key] = el.checked;
       else if (f.type === "number") values[f.key] = el.value === "" ? 0 : Number(el.value);
+      else if (f.type === "json") values[f.key] = el.value; // parse + validate ở validateFields, giữ raw string ở đây
       else values[f.key] = el.value;
     }
     return values;
@@ -141,6 +148,18 @@ const Components = (() => {
      dữ liệu game và làm engine crash lúc chơi. */
   function validateFields(fields, values) {
     for (const f of fields) {
+      if (f.type === "json") {
+        const raw = values[f.key];
+        if (raw === undefined || raw === null || raw === "") continue;
+        try {
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) return `"${f.label}" phải là một mảng JSON (vd. [ {...} ]).`;
+          values[f.key] = parsed; // ghi đè lại bằng giá trị đã parse để lưu đúng kiểu
+        } catch (err) {
+          return `"${f.label}" không phải JSON hợp lệ: ${err.message}`;
+        }
+        continue;
+      }
       if (f.type !== "number") continue;
       const v = values[f.key];
       if (v === undefined || v === null || v === "") continue;

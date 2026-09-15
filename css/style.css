@@ -196,6 +196,30 @@ html,body{
   50%{box-shadow:0 0 0 7px rgba(232,200,115,0);}
 }
 
+/* ---------- Combo (Giai đoạn 3, mục XXVI) ---------- */
+.combo-badge{
+  position:absolute;
+  top:56px;left:50%;
+  transform:translateX(-50%);
+  z-index:16;
+  padding:5px 16px;
+  border-radius:20px;
+  font-weight:800;font-size:13px;
+  color:#fff2c9;
+  background:linear-gradient(180deg, rgba(122,31,43,.9), rgba(40,16,16,.9));
+  border:2px solid var(--vang-dong);
+  pointer-events:none;
+  animation:comboPop .25s ease-out;
+}
+.combo-badge.hidden{display:none;}
+.combo-badge.combo-t2{border-color:#e8c873;color:#ffe9a8;}
+.combo-badge.combo-t3{border-color:#ff8a4a;color:#ffd0a8;box-shadow:0 0 12px rgba(255,138,74,.5);}
+.combo-badge.combo-t4{border-color:#ff5c3d;color:#ffdf6b;box-shadow:0 0 16px rgba(255,92,61,.7);animation:comboPop .25s ease-out, bossEnragePulse 1s ease-in-out infinite;}
+@keyframes comboPop{
+  0%{transform:translateX(-50%) scale(1.3);}
+  100%{transform:translateX(-50%) scale(1);}
+}
+
 .game-stage{
   position:relative;
   flex:1;
@@ -222,22 +246,73 @@ html,body{
 }
 .btn-wave{min-width:180px;}
 
+/* ---------- Thanh máu Boss (Giai đoạn 3) ---------- */
+.boss-bar{
+  position:absolute;
+  top:8px;left:50%;
+  transform:translateX(-50%);
+  width:min(420px,86%);
+  padding:6px 12px;
+  background:linear-gradient(180deg, rgba(40,16,16,.88), rgba(10,6,6,.88));
+  border:2px solid #7a1f2b;
+  border-radius:10px;
+  z-index:15;
+  pointer-events:none; /* không bao giờ che thao tác gameplay bên dưới */
+  box-shadow:0 6px 18px rgba(0,0,0,.5);
+}
+.boss-bar.hidden{display:none;}
+.boss-bar-head{
+  display:flex;align-items:center;gap:6px;
+  font-size:12px;font-weight:700;color:#f2d9a8;
+  text-shadow:0 1px 2px rgba(0,0,0,.6);
+  margin-bottom:3px;
+}
+.boss-bar-phase{
+  margin-left:auto;font-size:10px;font-weight:700;
+  color:#ff8a6a;
+}
+.boss-bar-track{
+  width:100%;height:10px;border-radius:6px;
+  background:rgba(0,0,0,.55);
+  border:1px solid rgba(232,200,115,.35);
+  overflow:hidden;
+}
+.boss-bar-fill{
+  height:100%;width:100%;
+  background:linear-gradient(90deg,#c9542a,#e8c873);
+  transition:width .25s ease;
+}
+.boss-bar-hp{
+  text-align:center;font-size:10px;color:#e8c873;margin-top:2px;
+}
+.boss-bar.boss-bar-enrage{
+  border-color:var(--vang-sang);
+  animation:bossEnragePulse 1s ease-in-out infinite;
+}
+.boss-bar.boss-bar-enrage .boss-bar-fill{
+  background:linear-gradient(90deg,#ff5c3d,#ffdf6b);
+}
+@keyframes bossEnragePulse{
+  0%,100%{box-shadow:0 6px 18px rgba(0,0,0,.5);}
+  50%{box-shadow:0 0 0 6px rgba(255,92,61,.35);}
+}
+@keyframes bossBarFlash{
+  0%,100%{filter:brightness(1);}
+  50%{filter:brightness(1.8);}
+}
+.boss-bar.boss-bar-flash{animation:bossBarFlash .35s ease-in-out 2;}
+
 /* ---------- Bộ chọn quân (tower picker) ---------- */
 .tower-picker{
   position:absolute;
-  /* left/top được tính chính xác bằng JS (UI._positionPicker) để luôn
-     nằm gọn trong game-stage, không tràn/cắt trên mobile. */
   background:linear-gradient(180deg,#3a2a1c,#241a12);
   border:2px solid var(--vang-dong);
   border-radius:10px;
   padding:10px;
-  display:flex;gap:8px;flex-wrap:wrap;
-  width:max-content;
-  max-width:min(320px,88vw);
-  overflow-y:auto;
-  -webkit-overflow-scrolling:touch;
+  display:flex;gap:8px;flex-wrap:wrap;max-width:min(320px,80vw);
   z-index:20;
   box-shadow:0 10px 24px var(--shadow);
+  transform:translate(-50%,-110%);
 }
 .tower-picker.hidden{display:none;}
 .tower-option{
@@ -245,8 +320,6 @@ html,body{
   gap:4px;padding:8px 10px;border-radius:8px;
   border:1px solid rgba(201,162,74,.4);
   background:rgba(0,0,0,.2);cursor:pointer;font-size:12px;min-width:64px;
-  flex:1 1 64px;
-  touch-action:manipulation;
   transition:transform .15s ease, background .15s ease, border-color .15s ease;
 }
 .tower-option:hover:not(.disabled){
@@ -276,7 +349,18 @@ html,body{
   box-shadow:0 18px 40px var(--shadow);
 }
 .overlay-panel h2{margin-top:0;color:var(--vang-sang);}
-.overlay-actions{display:flex;gap:10px;justify-content:center;margin-top:16px;}
+.overlay-stars{font-size:28px;letter-spacing:4px;margin:4px 0 8px;}
+.overlay-stars.hidden{display:none;}
+.overlay-stats{
+  margin-top:14px;padding-top:12px;
+  border-top:1px solid rgba(201,162,74,.35);
+  display:flex;flex-direction:column;gap:6px;
+  text-align:left;
+}
+.overlay-stat-row{display:flex;justify-content:space-between;font-size:13px;color:var(--giay-do-dim);}
+.overlay-stat-row strong{color:var(--vang-sang);}
+.overlay-tip{display:block;margin-top:6px;font-size:12px;color:#c9b385;font-style:italic;}
+.overlay-actions{display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap;}
 
 /* ---------- Tiện ích ---------- */
 .hidden{display:none !important;}
@@ -302,7 +386,7 @@ html,body{
 .level-diff{color:var(--vang-sang);font-size:13px;text-shadow:0 0 8px rgba(232,200,115,.6);}
 @keyframes cardIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 .level-desc{font-size:13px;margin:6px 0;color:var(--giay-do-dim);line-height:1.4;}
-.level-meta{display:flex;justify-content:space-between;font-size:12px;color:#c9b385;}
+.level-meta{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:#c9b385;}
 .level-lock{margin-top:8px;font-size:12px;color:#e0a0a0;}
 
 /* ---------- Danh sách tướng ---------- */
@@ -325,6 +409,10 @@ html,body{
 .hero-level{font-size:11px;color:#c9b385;font-weight:400;margin-left:4px;}
 .hero-desc{font-size:12px;margin:4px 0;color:var(--giay-do-dim);}
 .hero-stats{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:#c9b385;}
+.hero-exp-row{display:flex;align-items:center;gap:6px;margin-top:5px;}
+.hero-exp-track{flex:1;height:6px;border-radius:4px;background:rgba(0,0,0,.4);border:1px solid rgba(201,162,74,.3);overflow:hidden;}
+.hero-exp-fill{height:100%;background:linear-gradient(90deg,#2f5d50,#7bc96f);transition:width .3s ease;}
+.hero-exp-label{font-size:10px;color:#c9b385;white-space:nowrap;}
 .hero-action{flex:0 0 auto;}
 .hero-selected-badge{font-size:12px;color:#7bc96f;font-weight:700;}
 .menu-actions-row{display:flex;gap:10px;justify-content:center;}
@@ -371,59 +459,11 @@ html,body{
 .toast.visible{opacity:1;transform:translateY(0) scale(1);box-shadow:0 8px 24px var(--shadow), 0 0 0 1px rgba(232,200,115,.2);}
 
 /* ---------- Responsive ---------- */
-/* An toàn cho các thiết bị có notch/thanh cử chỉ (iPhone...) */
-.hud{
-  padding-top:max(10px, env(safe-area-inset-top));
-}
-.game-footer{
-  padding-bottom:max(10px, env(safe-area-inset-bottom));
-}
-.screen{
-  padding-top:max(24px, env(safe-area-inset-top));
-  padding-bottom:max(24px, env(safe-area-inset-bottom));
-  padding-left:max(24px, env(safe-area-inset-left));
-  padding-right:max(24px, env(safe-area-inset-right));
-}
-
 @media (max-width:640px){
-  html{font-size:15px;}
-  .hud{gap:6px;padding-left:8px;padding-right:8px;}
-  .hud-stat{font-size:12px;padding:5px 8px;min-width:0;gap:4px;}
-  .hud-icon{font-size:13px;}
-  .hud-actions{gap:6px;}
-  .btn-small{padding:8px 10px;font-size:13px;}
-  .btn-wave{min-width:0;width:100%;font-size:14px;}
-  .game-footer{padding:8px 10px;}
+  .hud-stat{font-size:12px;padding:5px 8px;min-width:0;}
+  .btn-wave{min-width:140px;font-size:14px;}
   .menu-panel{padding:20px 16px;}
-  .menu-panel.wide{width:96vw;}
-  .tower-picker{max-width:92vw;padding:8px;gap:6px;}
-  .tower-option{min-width:56px;padding:6px 8px;font-size:11px;}
-  .tower-option .t-icon{font-size:19px;}
-  .tower-option .t-stats{white-space:normal;text-align:center;}
-  .overlay-panel{padding:20px 18px;}
-  .level-list,.hero-list,.quest-list{max-height:50vh;}
 }
-
-/* Màn hình rất nhỏ (điện thoại phổ thông, iPhone SE...) */
-@media (max-width:380px){
-  .game-title{font-size:26px;}
-  .hud-stat{font-size:11px;padding:4px 6px;}
-  .hud-icon{font-size:12px;}
-  .btn{font-size:14px;padding:10px 14px;}
-  .btn-small{font-size:12px;padding:7px 8px;}
-}
-
-/* Chế độ ngang trên điện thoại (chiều cao thấp) — thu gọn HUD/footer
-   để tăng diện tích cho khu vực chơi. */
-@media (max-height:420px) and (orientation:landscape){
-  .hud{padding:6px 10px;}
-  .hud-stat{padding:4px 8px;font-size:11px;}
-  .game-footer{padding:6px 10px;}
-  .btn-wave{min-width:120px;}
-  .menu-panel{padding:14px 16px;}
-  .screen{padding:12px;}
-}
-
 @media (min-width:1024px){
   .game-stage{padding:12px;}
 }

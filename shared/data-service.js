@@ -36,7 +36,7 @@ const DataService = (() => {
     adminLogs: "collection:adminLogs",
   };
 
-  const SCHEMA_VERSION = 4;
+  const SCHEMA_VERSION = 6;
 
   /* ---------------------------------------------------------
      DỮ LIỆU MẶC ĐỊNH (seed)
@@ -46,7 +46,7 @@ const DataService = (() => {
      --------------------------------------------------------- */
   function defaultGameConfig() {
     return {
-      MAX_LEVEL: 9,
+      MAX_LEVEL: 10,
       START_GOLD: 150,
       START_HP: 20,
       START_STAGE: "hoa_lu",
@@ -179,70 +179,57 @@ const DataService = (() => {
     return [
       {
         id: "quan_su_quan", name: "Quân sứ quân",
-        hp: 40, speed: 55, reward: 8, damage: 1,
+        hp: 40, speed: 55, reward: 8, rewardExp: 4, damage: 1,
         defense: 0, resistance: 0,
         color: "#8a4a3a", radius: 12, icon: "🛡", enabled: true,
       },
       {
         id: "ky_binh", name: "Kỵ binh",
-        hp: 28, speed: 95, reward: 10, damage: 1,
+        hp: 28, speed: 95, reward: 10, rewardExp: 5, damage: 1,
         defense: 0, resistance: 0,
         color: "#5a5a8a", radius: 11, icon: "🐎", enabled: true,
       },
       {
         id: "truong_giap", name: "Trường giáp binh",
-        hp: 90, speed: 40, reward: 16, damage: 2,
+        hp: 90, speed: 40, reward: 16, rewardExp: 8, damage: 2,
         defense: 2, resistance: 0,
         color: "#4a4a4a", radius: 14, icon: "⚔", enabled: true,
       },
       {
         id: "cung_thu_dich", name: "Cung thủ địch",
-        hp: 34, speed: 48, reward: 12, damage: 1,
+        hp: 34, speed: 48, reward: 12, rewardExp: 6, damage: 1,
         defense: 0, resistance: 10,
         color: "#6a5a2f", radius: 12, icon: "🏹", enabled: true,
       },
       {
         id: "tuong_giac", name: "Tướng giặc",
-        hp: 260, speed: 38, reward: 60, damage: 4,
+        hp: 260, speed: 38, reward: 60, rewardExp: 30, damage: 4,
         defense: 4, resistance: 0,
         color: "#7a1f2b", radius: 18, icon: "👑", enabled: true,
       },
       {
         id: "thiet_ky", name: "Thiết kỵ",
-        hp: 140, speed: 58, reward: 22, damage: 3,
+        hp: 140, speed: 58, reward: 22, rewardExp: 11, damage: 3,
         defense: 5, resistance: 0,
         color: "#39395c", radius: 15, icon: "🏇", enabled: true,
       },
       {
         id: "cung_no_tong", name: "Cung nỏ Tống",
-        hp: 60, speed: 46, reward: 18, damage: 2,
+        hp: 60, speed: 46, reward: 18, rewardExp: 9, damage: 2,
         defense: 0, resistance: 25,
         color: "#5a4a2f", radius: 12, icon: "🎯", enabled: true,
       },
-      {
-        id: "ky_binh_nguyen", name: "Kỵ binh Nguyên Mông",
-        hp: 170, speed: 72, reward: 26, damage: 3,
-        defense: 6, resistance: 10,
-        color: "#3a2a1a", radius: 14, icon: "🐴", enabled: true,
-      },
-      {
-        id: "bo_binh_nguyen", name: "Bộ binh Nguyên Mông",
-        hp: 120, speed: 42, reward: 19, damage: 2,
-        defense: 9, resistance: 5,
-        color: "#4a3a2a", radius: 14, icon: "🪓", enabled: true,
-      },
-      {
-        id: "ky_binh_thanh", name: "Kỵ binh quân Thanh",
-        hp: 150, speed: 66, reward: 24, damage: 3,
-        defense: 5, resistance: 8,
-        color: "#8a1a1a", radius: 14, icon: "🎏", enabled: true,
-      },
-      {
-        id: "phao_thu_thanh", name: "Pháo thủ quân Thanh",
-        hp: 85, speed: 38, reward: 22, damage: 4,
-        defense: 0, resistance: 30,
-        color: "#3a3a3a", radius: 12, icon: "💣", enabled: true,
-      },
+    ];
+  }
+
+  /* 3 phase chuẩn theo % HP còn lại, dùng chung cho mọi Boss (mục XV).
+     speedMult/damageMult là hệ số NỀN theo phase, sẽ nhân thêm với buff
+     tự thân từ ability (mục XVI) để ra hệ số cuối cùng. */
+  function defaultBossPhases() {
+    return [
+      { id: "p1", name: "Bình thường", hpFromPct: 100, hpToPct: 60, speedMult: 1, damageMult: 1, enrage: false },
+      { id: "p2", name: "Mạnh hơn", hpFromPct: 60, hpToPct: 30, speedMult: 1.12, damageMult: 1.2, enrage: false },
+      { id: "p3", name: "Cuồng nộ", hpFromPct: 30, hpToPct: 0, speedMult: 1.25, damageMult: 1.35, enrage: true },
     ];
   }
 
@@ -257,6 +244,14 @@ const DataService = (() => {
         icon: "🔥", color: "#7a1f2b",
         description: "Thủ lĩnh sứ quân cố thủ Hoa Lư, xuất hiện ở đợt cuối.",
         enabled: true,
+        phases: defaultBossPhases(),
+        abilities: [
+          {
+            id: "cuong_no", name: "Cuồng Nộ",
+            trigger: { type: "hp_below", percent: 30 }, once: true,
+            effect: "self_buff", speedBonus: 0.3, damageBonus: 0,
+          },
+        ],
       },
       {
         id: "boss_dai_la", name: "Đô Hộ Sứ Cao Chính Bình",
@@ -267,6 +262,14 @@ const DataService = (() => {
         icon: "🐉", color: "#3a2a55",
         description: "Trấn giữ phòng tuyến Đại La kiên cố.",
         enabled: true,
+        phases: defaultBossPhases(),
+        abilities: [
+          {
+            id: "trieu_hoi", name: "Triệu Hồi",
+            trigger: { type: "hp_below", percent: 50 }, cooldown: 22,
+            effect: "summon", summonType: "ky_binh", summonCount: 3,
+          },
+        ],
       },
       {
         id: "boss_bach_dang", name: "Thuỷ Tặc Chúa",
@@ -277,6 +280,14 @@ const DataService = (() => {
         icon: "🌊", color: "#1f4a5a",
         description: "Trấn giữ cửa sông Bạch Đằng, được cọc gỗ Ngô Quyền chờ sẵn.",
         enabled: true,
+        phases: defaultBossPhases(),
+        abilities: [
+          {
+            id: "hoi_sinh_luc", name: "Hồi Sinh Lực",
+            trigger: { type: "interval", seconds: 5 }, cooldown: 5,
+            effect: "heal_self", healPercent: 5,
+          },
+        ],
       },
       {
         id: "boss_hau_nhan_bao", name: "Hầu Nhân Bảo",
@@ -287,6 +298,14 @@ const DataService = (() => {
         icon: "⚔️", color: "#4a2f2f",
         description: "Chủ tướng quân Tống, tử trận tại ải Chi Lăng năm 981.",
         enabled: true,
+        phases: defaultBossPhases(),
+        abilities: [
+          {
+            id: "xung_phong", name: "Xung Phong Ải Hẹp",
+            trigger: { type: "hp_above", percent: 70 }, continuous: true,
+            effect: "self_buff", speedBonus: 0, damageBonus: 0.25,
+          },
+        ],
       },
       {
         id: "boss_quach_quan_bien", name: "Quách Quân Biện",
@@ -297,6 +316,14 @@ const DataService = (() => {
         icon: "🏹", color: "#2f3a4a",
         description: "Phó tướng quân Tống, bị bắt sống ở phòng tuyến Bình Lỗ năm 981.",
         enabled: true,
+        phases: defaultBossPhases(),
+        abilities: [
+          {
+            id: "trieu_hoi_cung_no", name: "Triệu Hồi Cung Nỏ",
+            trigger: { type: "hp_below", percent: 40 }, cooldown: 22,
+            effect: "summon", summonType: "cung_no_tong", summonCount: 4,
+          },
+        ],
       },
       {
         id: "boss_giac_phuong_bac", name: "Đại Tướng Xâm Lăng",
@@ -307,42 +334,20 @@ const DataService = (() => {
         icon: "👹", color: "#2a1f3a",
         description: "Chỉ huy tối cao của đội quân xâm lược cuối cùng, trấn giữ cửa ngõ kinh thành Thăng Long.",
         enabled: true,
-      },
-      {
-        id: "boss_toa_do", name: "Toa Đô",
-        hp: 7200, damage: 18, defense: 18, resistance: 26,
-        speed: 34, reward: 1250, rewardExp: 620,
-        skill: "Thiết Kỵ Phá Trận (+30% tốc độ đánh khi máu dưới 50%)",
-        skillCooldown: 0,
-        icon: "🗡️", color: "#3a2a1a",
-        description: "Đại tướng Nguyên Mông, tử trận ở Tây Kết trong cuộc kháng chiến năm 1285.",
-        enabled: true,
-      },
-      {
-        id: "boss_o_ma_nhi", name: "Ô Mã Nhi",
-        hp: 9000, damage: 20, defense: 20, resistance: 30,
-        speed: 30, reward: 1550, rewardExp: 760,
-        skill: "Triệu hồi thêm 5 kỵ binh Nguyên khi máu dưới 45%",
-        skillCooldown: 0,
-        icon: "🌊", color: "#1a2a3a",
-        description: "Đô đốc thuỷ quân Nguyên Mông, bị bắt sống trên sông Bạch Đằng năm 1288.",
-        enabled: true,
-      },
-      {
-        id: "boss_sam_nghi_dong", name: "Sầm Nghi Đống",
-        hp: 11000, damage: 22, defense: 20, resistance: 32,
-        speed: 32, reward: 2000, rewardExp: 950,
-        skill: "Tử thủ Đống Đa (+50% giáp khi máu dưới 30%)",
-        skillCooldown: 0,
-        icon: "🔥", color: "#8a1a1a",
-        description: "Tướng nhà Thanh trấn giữ đồn Đống Đa, thất trận trước quân Tây Sơn mùa xuân Kỷ Dậu 1789.",
-        enabled: true,
+        phases: defaultBossPhases(),
+        abilities: [
+          {
+            id: "cuong_no_toan_phan", name: "Cuồng Nộ Toàn Phần",
+            trigger: { type: "hp_below", percent: 25 }, once: true,
+            effect: "self_buff", speedBonus: 0.1, damageBonus: 0.4,
+          },
+        ],
       },
     ];
   }
 
   function defaultStages() {
-    return [
+    const stages = [
       {
         id: "hoa_lu", order: 1, name: "Hoa Lư",
         mapName: "Kinh đô Hoa Lư",
@@ -517,99 +522,20 @@ const DataService = (() => {
           { groups: [{ type: "thiet_ky", count: 14, interval: 0.4 }, { type: "tuong_giac", count: 6, interval: 0.6 }, { boss: "boss_giac_phuong_bac" }] },
         ],
       },
-      {
-        id: "chuong_duong", order: 7, name: "Bến Chương Dương",
-        mapName: "Bến Chương Dương",
-        description: "Trần Quang Khải phá vòng vây Nguyên Mông, mở đường thu phục Thăng Long năm 1285.",
-        background: "chuong_duong",
-        difficulty: 7,
-        unlockCondition: { type: "stage_cleared", stageId: "thang_long" },
-        rewardGold: 420, rewardExp: 240,
-        enabled: true,
-        path: [
-          { x: -40, y: 200 }, { x: 200, y: 200 }, { x: 200, y: 420 },
-          { x: 460, y: 420 }, { x: 460, y: 150 }, { x: 680, y: 150 },
-          { x: 680, y: 380 }, { x: 900, y: 380 },
-        ],
-        castle: { x: 930, y: 380 },
-        buildSpots: [
-          { x: 90, y: 300 }, { x: 300, y: 200 }, { x: 300, y: 420 },
-          { x: 460, y: 280 }, { x: 570, y: 150 }, { x: 570, y: 380 },
-          { x: 680, y: 260 }, { x: 800, y: 440 }, { x: 850, y: 250 },
-        ],
-        waves: [
-          { groups: [{ type: "bo_binh_nguyen", count: 12, interval: 0.5 }] },
-          { groups: [{ type: "ky_binh_nguyen", count: 10, interval: 0.5 }, { type: "bo_binh_nguyen", count: 6, interval: 0.6 }] },
-          { groups: [{ type: "thiet_ky", count: 10, interval: 0.5 }, { type: "cung_no_tong", count: 8, interval: 0.5 }] },
-          { groups: [{ type: "ky_binh_nguyen", count: 14, interval: 0.4 }, { type: "bo_binh_nguyen", count: 8, interval: 0.5 }] },
-          { groups: [{ type: "tuong_giac", count: 4, interval: 0.8 }, { type: "ky_binh_nguyen", count: 10, interval: 0.4 }] },
-          { groups: [{ type: "bo_binh_nguyen", count: 14, interval: 0.4 }, { type: "thiet_ky", count: 10, interval: 0.45 }] },
-          { groups: [{ type: "ky_binh_nguyen", count: 16, interval: 0.35 }, { type: "bo_binh_nguyen", count: 10, interval: 0.4 }, { boss: "boss_toa_do" }] },
-        ],
-      },
-      {
-        id: "van_kiep", order: 8, name: "Cửa biển Vạn Kiếp",
-        mapName: "Vạn Kiếp – Bạch Đằng 1288",
-        description: "Trần Hưng Đạo bày trận cọc ngầm, đánh tan thuỷ quân Nguyên Mông lần thứ ba.",
-        background: "van_kiep",
-        difficulty: 8,
-        unlockCondition: { type: "stage_cleared", stageId: "chuong_duong" },
-        rewardGold: 520, rewardExp: 300,
-        enabled: true,
-        path: [
-          { x: -40, y: 460 }, { x: 160, y: 460 }, { x: 160, y: 130 },
-          { x: 360, y: 130 }, { x: 360, y: 460 }, { x: 580, y: 460 },
-          { x: 580, y: 130 }, { x: 800, y: 130 }, { x: 800, y: 300 }, { x: 920, y: 300 },
-        ],
-        castle: { x: 940, y: 300 },
-        buildSpots: [
-          { x: 80, y: 300 }, { x: 260, y: 130 }, { x: 260, y: 460 },
-          { x: 360, y: 300 }, { x: 470, y: 460 }, { x: 470, y: 130 },
-          { x: 690, y: 130 }, { x: 690, y: 460 }, { x: 850, y: 210 },
-        ],
-        waves: [
-          { groups: [{ type: "ky_binh_nguyen", count: 14, interval: 0.45 }] },
-          { groups: [{ type: "bo_binh_nguyen", count: 12, interval: 0.5 }, { type: "cung_no_tong", count: 8, interval: 0.5 }] },
-          { groups: [{ type: "thiet_ky", count: 12, interval: 0.45 }, { type: "ky_binh_nguyen", count: 10, interval: 0.4 }] },
-          { groups: [{ type: "tuong_giac", count: 5, interval: 0.7 }, { type: "bo_binh_nguyen", count: 12, interval: 0.4 }] },
-          { groups: [{ type: "ky_binh_nguyen", count: 16, interval: 0.35 }, { type: "cung_no_tong", count: 10, interval: 0.4 }] },
-          { groups: [{ type: "thiet_ky", count: 14, interval: 0.4 }, { type: "bo_binh_nguyen", count: 14, interval: 0.35 }] },
-          { groups: [{ type: "tuong_giac", count: 6, interval: 0.6 }, { type: "ky_binh_nguyen", count: 16, interval: 0.35 }] },
-          { groups: [{ type: "bo_binh_nguyen", count: 16, interval: 0.3 }, { type: "thiet_ky", count: 14, interval: 0.35 }, { boss: "boss_o_ma_nhi" }] },
-        ],
-      },
-      {
-        id: "ngoc_hoi_dong_da", order: 9, name: "Ngọc Hồi – Đống Đa",
-        mapName: "Gò Đống Đa",
-        description: "Vua Quang Trung thần tốc tiến quân, đại phá 29 vạn quân Thanh mùa xuân Kỷ Dậu 1789.",
-        background: "dong_da",
-        difficulty: 9,
-        unlockCondition: { type: "stage_cleared", stageId: "van_kiep" },
-        rewardGold: 650, rewardExp: 380,
-        enabled: true,
-        path: [
-          { x: -40, y: 270 }, { x: 180, y: 270 }, { x: 180, y: 70 },
-          { x: 400, y: 70 }, { x: 400, y: 470 }, { x: 600, y: 470 },
-          { x: 600, y: 120 }, { x: 800, y: 120 }, { x: 800, y: 360 }, { x: 920, y: 360 },
-        ],
-        castle: { x: 940, y: 360 },
-        buildSpots: [
-          { x: 90, y: 170 }, { x: 280, y: 70 }, { x: 280, y: 470 },
-          { x: 400, y: 270 }, { x: 500, y: 470 }, { x: 500, y: 120 },
-          { x: 700, y: 120 }, { x: 700, y: 360 }, { x: 860, y: 240 },
-        ],
-        waves: [
-          { groups: [{ type: "ky_binh_thanh", count: 16, interval: 0.4 }] },
-          { groups: [{ type: "phao_thu_thanh", count: 10, interval: 0.5 }, { type: "thiet_ky", count: 8, interval: 0.5 }] },
-          { groups: [{ type: "ky_binh_thanh", count: 16, interval: 0.35 }, { type: "phao_thu_thanh", count: 10, interval: 0.45 }] },
-          { groups: [{ type: "tuong_giac", count: 6, interval: 0.6 }, { type: "ky_binh_thanh", count: 14, interval: 0.35 }] },
-          { groups: [{ type: "phao_thu_thanh", count: 14, interval: 0.4 }, { type: "thiet_ky", count: 12, interval: 0.4 }] },
-          { groups: [{ type: "ky_binh_thanh", count: 18, interval: 0.3 }, { type: "phao_thu_thanh", count: 12, interval: 0.4 }] },
-          { groups: [{ type: "tuong_giac", count: 8, interval: 0.5 }, { type: "ky_binh_thanh", count: 16, interval: 0.3 }] },
-          { groups: [{ type: "phao_thu_thanh", count: 16, interval: 0.3 }, { type: "ky_binh_thanh", count: 18, interval: 0.28 }, { boss: "boss_sam_nghi_dong" }] },
-        ],
-      },
     ];
+    // Priority 5 (Score+Combo+3-Sao): gắn starConditions + targetTime THẬT
+    // cho từng màn, tăng dần độ khó theo "order", thay vì để trống rồi
+    // chỉ hiển thị UI giả (mục LXI - cấm "giả" tính năng).
+    return stages.map((s) => ({
+      ...s,
+      targetTime: s.targetTime || Math.round(s.waves.length * 24 + (s.order || 1) * 6),
+      starConditions: s.starConditions || {
+        oneStar: true,
+        twoStarCastleHpPercent: 45,
+        threeStarCastleHpPercent: 80,
+        threeStarScore: 500 + (s.order || 1) * 350,
+      },
+    }));
   }
 
   function defaultHeroes() {
@@ -855,8 +781,12 @@ const DataService = (() => {
         gold: 100,           // ví vàng bền vững (persistent), khác vàng trong trận
         unlockedStages: ["hoa_lu"],
         bestWave: {},
+        stageStars: {},   // { stageId: 1|2|3 } - Giai đoạn 3, mục V
+        bestScore: {},    // { stageId: number } - mục XXV
+        bestTime: {},     // { stageId: giây } - mục XXV, chỉ cập nhật khi THẮNG
         heroesOwned: ["dinh_bo_linh"],
         heroLevels: { dinh_bo_linh: 1 },
+        heroExp: { dinh_bo_linh: 0 }, // EXP riêng của từng tướng (Giai đoạn 3), TÁCH BIỆT với exp người chơi ở trên
         selectedHero: "dinh_bo_linh",
         questProgress: {},   // { questId: { done:false, claimed:false, progressValue:0 } }
         stats: { totalKills: 0, totalRuns: 0, wins: 0, losses: 0 },
@@ -954,7 +884,11 @@ const DataService = (() => {
     StorageService.set(KEYS.bosses, bosses);
   }
 
-  /* Di trú schemaVersion 2 -> 3 (Giai đoạn 3 - Combat Engine). */
+  /* Di trú schemaVersion 2 -> 3 (Giai đoạn 3 - Combat Engine).
+     LƯU Ý: ghi literal 3 (KHÔNG dùng hằng SCHEMA_VERSION), vì
+     SCHEMA_VERSION là phiên bản MỚI NHẤT hiện tại (có thể lớn hơn 3 ở
+     các Giai đoạn sau) - nếu ghi nhầm hằng số, các bước di trú kế tiếp
+     (v3->v4, v4->v5...) sẽ bị coi là "đã xong" và bị BỎ QUA im lặng. */
   function migrateSchemaV2ToV3() {
     const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
     if (currentVersion >= 3) return;
@@ -963,42 +897,104 @@ const DataService = (() => {
     console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 3: thêm Critical/Armor Penetration/Effect cho công trình, thêm tháp mới, thêm khung phases/abilities cho Boss.");
   }
 
-  /* Di trú schemaVersion 3 -> 4 (Giai đoạn 4 - thêm 3 màn chơi mới:
-     Chương Dương / Vạn Kiếp / Ngọc Hồi-Đống Đa, quân địch & boss mới).
-     Chỉ THÊM những bản ghi id còn thiếu, không đụng tới dữ liệu Admin
-     đã tuỳ chỉnh cho các bản ghi cũ. Idempotent. */
+  /* Đảm bảo mọi Boss có Phase Engine + Skill thật (Giai đoạn 3, Priority 2).
+     Chỉ điền phases/abilities nếu đang RỖNG (mảng trống do migration v3
+     trước đó chỉ tạo khung), không đụng tới Boss Admin đã tự cấu hình. */
+  function ensureBossEngineFields() {
+    const defaults = defaultBosses();
+    const defaultsById = {};
+    for (const d of defaults) defaultsById[d.id] = d;
+    const bosses = list("bosses").map((b) => {
+      const patch = {};
+      if (!Array.isArray(b.phases) || b.phases.length === 0) patch.phases = defaultBossPhases();
+      if (!Array.isArray(b.abilities) || b.abilities.length === 0) {
+        const def = defaultsById[b.id];
+        patch.abilities = def ? def.abilities : [];
+      }
+      return Object.keys(patch).length ? Object.assign({}, b, patch) : b;
+    });
+    StorageService.set(KEYS.bosses, bosses);
+  }
+
+  /* Di trú schemaVersion 3 -> 4 (Giai đoạn 3 - Boss Phase Engine + Boss Skill thật).
+     Ghi literal 4, cùng lý do như trên. */
   function migrateSchemaV3ToV4() {
     const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
-    if (currentVersion >= SCHEMA_VERSION) return;
+    if (currentVersion >= 4) return;
+    ensureBossEngineFields();
+    StorageService.set(KEYS.schemaVersion, 4);
+    console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 4: thêm Boss Phase Engine (3 phase HP) + Boss Skill thật (phases/abilities) cho Boss.");
+  }
 
-    const enemies = list("enemies");
-    const enemyIds = new Set(enemies.map((e) => e.id));
-    for (const def of defaultEnemies()) {
-      if (!enemyIds.has(def.id)) enemies.push(def);
-    }
+  /* Đảm bảo Hero EXP/Level thật có đủ field cần thiết (Giai đoạn 3,
+     Priority 3): player.heroExp{} riêng biệt với player.exp (EXP người
+     chơi), và enemies có rewardExp (EXP tướng nhận khi hạ địch loại đó).
+     Chỉ điền field còn THIẾU, không đụng dữ liệu Admin đã tự chỉnh. */
+  function ensureHeroProgressionFields() {
+    const players = list("players").map((p) => {
+      if (p.heroExp !== undefined) return p;
+      const heroExp = {};
+      for (const hid of p.heroesOwned || []) heroExp[hid] = 0;
+      return Object.assign({}, p, { heroExp });
+    });
+    StorageService.set(KEYS.players, players);
+
+    const enemies = list("enemies").map((e) => {
+      if (e.rewardExp !== undefined) return e;
+      // Chưa có Admin nào khai báo rewardExp -> suy ra từ reward vàng hiện có
+      // (khoảng 50%) để không có địch nào cho 0 EXP một cách vô lý.
+      return Object.assign({}, e, { rewardExp: Math.max(1, Math.round((e.reward || 0) * 0.5)) });
+    });
     StorageService.set(KEYS.enemies, enemies);
+  }
 
-    const bosses = list("bosses");
-    const bossIds = new Set(bosses.map((b) => b.id));
-    for (const def of defaultBosses()) {
-      if (!bossIds.has(def.id)) bosses.push(def);
-    }
-    StorageService.set(KEYS.bosses, bosses);
+  /* Di trú schemaVersion 4 -> 5 (Giai đoạn 3 - Hero EXP/Level thật).
+     Đây là bước cuối cùng hiện tại nên trùng với SCHEMA_VERSION, nhưng
+     vẫn ghi literal 5 để nếu có Giai đoạn 4 (schemaVersion 6) thêm vào
+     sau, hàm này không bị đổi ý nghĩa theo hằng số. */
+  function migrateSchemaV4ToV5() {
+    const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
+    if (currentVersion >= 5) return;
+    ensureHeroProgressionFields();
+    StorageService.set(KEYS.schemaVersion, 5);
+    console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 5: thêm Hero EXP/Level thật (player.heroExp, enemies.rewardExp).");
+  }
 
-    const stages = list("stages");
-    const stageIds = new Set(stages.map((s) => s.id));
-    for (const def of defaultStages()) {
-      if (!stageIds.has(def.id)) stages.push(def);
-    }
+  /* Đảm bảo Score/Combo/3-Sao (Giai đoạn 3, Priority 5) có đủ field.
+     Chỉ điền field còn THIẾU, không đụng dữ liệu Admin/người chơi đã có. */
+  function ensureScoreProgressionFields() {
+    const players = list("players").map((p) => {
+      const patch = {};
+      if (p.stageStars === undefined) patch.stageStars = {};
+      if (p.bestScore === undefined) patch.bestScore = {};
+      if (p.bestTime === undefined) patch.bestTime = {};
+      return Object.keys(patch).length ? Object.assign({}, p, patch) : p;
+    });
+    StorageService.set(KEYS.players, players);
+
+    const stages = list("stages").map((s) => {
+      const patch = {};
+      if (!s.targetTime) patch.targetTime = Math.round((s.waves ? s.waves.length : 5) * 24 + (s.order || 1) * 6);
+      if (!s.starConditions) {
+        patch.starConditions = {
+          oneStar: true,
+          twoStarCastleHpPercent: 45,
+          threeStarCastleHpPercent: 80,
+          threeStarScore: 500 + (s.order || 1) * 350,
+        };
+      }
+      return Object.keys(patch).length ? Object.assign({}, s, patch) : s;
+    });
     StorageService.set(KEYS.stages, stages);
+  }
 
-    const config = getConfig();
-    if ((config.MAX_LEVEL || 0) < 9) {
-      setConfig(Object.assign({}, config, { MAX_LEVEL: 9 }));
-    }
-
-    StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
-    console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 4: thêm 3 màn chơi mới, quân địch & boss mới.");
+  /* Di trú schemaVersion 5 -> 6 (Giai đoạn 3 - Score/Combo/3-Sao thật). */
+  function migrateSchemaV5ToV6() {
+    const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
+    if (currentVersion >= 6) return;
+    ensureScoreProgressionFields();
+    StorageService.set(KEYS.schemaVersion, 6);
+    console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 6: thêm Score/Combo/3-Sao thật (player.stageStars/bestScore/bestTime, stages.starConditions/targetTime).");
   }
 
   function ensureSeeded() {
@@ -1013,6 +1009,8 @@ const DataService = (() => {
     migrateLegacyIfNeeded();
     migrateSchemaV2ToV3();
     migrateSchemaV3ToV4();
+    migrateSchemaV4ToV5();
+    migrateSchemaV5ToV6();
     if (!StorageService.has(KEYS.schemaVersion)) {
       StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
     }
@@ -1164,6 +1162,9 @@ const DataService = (() => {
       }
     });
     ensureBuildingCombatFields(); // vá field mới nếu snapshot import là bản backup cũ (v2)
+    ensureBossEngineFields(); // vá Boss Phase Engine + Skill thật nếu snapshot import là bản backup cũ (v3)
+    ensureHeroProgressionFields(); // vá Hero EXP/Level thật nếu snapshot import là bản backup cũ (v4)
+    ensureScoreProgressionFields(); // vá Score/Combo/3-Sao thật nếu snapshot import là bản backup cũ (v5)
     StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
   }
 
@@ -1196,7 +1197,6 @@ const DataService = (() => {
         rewardGold: stage.rewardGold,
         rewardExp: stage.rewardExp,
         enabled: stage.enabled !== false,
-        background: stage.background,
         path: stage.path,
         castle: stage.castle,
         buildSpots: stage.buildSpots,
@@ -1222,6 +1222,8 @@ const DataService = (() => {
         resistance: b.resistance || 0,
         color: b.color, radius: 22, icon: b.icon,
         boss: true, bossSkill: b.skill,
+        phases: Array.isArray(b.phases) ? b.phases : [],
+        abilities: Array.isArray(b.abilities) ? b.abilities : [],
         enabled: b.enabled !== false,
       };
     }
