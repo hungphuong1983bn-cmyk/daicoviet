@@ -217,6 +217,11 @@ const ADMIN_SCHEMAS = {
       { key: "rewardGold", label: "Reward Gold (khi qua màn)", type: "number", min: 0 },
       { key: "rewardExp", label: "Reward EXP (khi qua màn)", type: "number", min: 0 },
       { key: "targetTime", label: "Thời gian chuẩn (giây) để đạt Speed Bonus khi tính Score", type: "number", min: 1 },
+      { key: "specialMechanic", label: "Cơ chế bản đồ đặc biệt", type: "select", options: [
+        { value: "none", label: "Không có" },
+        { value: "tide", label: "🌊 Thuỷ triều (làm chậm/nhanh toàn bộ địch theo chu kỳ)" },
+        { value: "ambush", label: "🗡️ Phục kích (dùng Delay ở từng nhóm quân trong Wave)" },
+      ] },
       { key: "starConditions", label: "Điều kiện 3 Sao (JSON) — {oneStar,twoStarCastleHpPercent,threeStarCastleHpPercent,threeStarScore}", type: "json",
         hint: "2 sao khi %HP thành còn lại lúc thắng >= twoStarCastleHpPercent. 3 sao khi %HP >= threeStarCastleHpPercent HOẶC Score đạt threeStarScore. Engine THẬT SỰ tính đúng công thức này, không chỉ hiển thị." },
       { key: "unlockConditionType", label: "Điều kiện mở khoá", type: "select", options: [

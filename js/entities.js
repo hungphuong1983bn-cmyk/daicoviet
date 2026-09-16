@@ -26,15 +26,24 @@ class Enemy {
   // hook toàn cục (được game.js gán) - Boss đổi phase / dùng skill
   static onBossEvent = null;
 
-  constructor(typeId, path) {
+  constructor(typeId, path, modifiers) {
     const def = GAME_DATA.enemyTypes[typeId];
+    const mod = modifiers || {};
     this.id = nextEntityId();
     this.typeId = typeId;
     this.def = def;
-    this.maxHp = def.hp;
-    this.hp = def.hp;
-    this.speed = def.speed;
-    this.defense = def.defense || 0;
+    // Wave Engine (Giai đoạn 3, Priority 4): Special Wave có thể buff HP/Speed
+    // theo từng đợt (vd. ARMOR WAVE, FAST WAVE) hoặc đánh dấu Elite riêng lẻ,
+    // mà KHÔNG cần tạo loại địch mới trong Admin - engine nhân hệ số thật.
+    this.isElite = !!mod.elite;
+    const hpMult = (mod.hpMultiplier || 1) * (this.isElite ? 1.6 : 1);
+    const speedMult0 = mod.speedMultiplier || 1;
+    const rewardMult0 = this.isElite ? 1.4 : 1;
+    this.maxHp = Math.round(def.hp * hpMult);
+    this.hp = this.maxHp;
+    this.speed = def.speed * speedMult0;
+    this.rewardMult = rewardMult0;
+    this.defense = (def.defense || 0) + (mod.armorBonus || 0);
     this.resistance = def.resistance || 0;
     this.isBoss = !!def.boss;
     this.path = path;
@@ -211,12 +220,14 @@ class Enemy {
     if (Enemy.onBossEvent) Enemy.onBossEvent(this, { type: "ability_used", ability: a });
   }
 
-  update(dt) {
+  update(dt, mapSpeedMult) {
     if (!this.alive) return;
     this._processStatusEffects(dt);
     if (!this.alive) return; // DOT (burn/bleed) có thể vừa giết địch
     if (this.isBoss) this._processBossAbilities(dt);
-    this._effectiveSpeedMult = this._statusSpeedMult * (this.isBoss ? this._bossSpeedMult : 1);
+    // mapSpeedMult: hệ số tốc độ do CƠ CHẾ BẢN ĐỒ áp đặt (vd. Tide Mechanic
+    // ở Bạch Đằng - mục VI), áp dụng cho MỌI địch đang có mặt, không chỉ 1 con.
+    this._effectiveSpeedMult = this._statusSpeedMult * (this.isBoss ? this._bossSpeedMult : 1) * (mapSpeedMult || 1);
     if (this._stunned) return; // đứng yên hoàn toàn khi bị Stun
     const target = this.path[this.wpIndex + 1];
     if (!target) {
@@ -283,13 +294,21 @@ class Enemy {
 
   draw(ctx, showHpBar) {
     const r = this.def.radius;
+    // vòng hào quang Elite (mục XII/XXIV "ELITE") - vẽ TRƯỚC thân để không che icon
+    if (this.isElite) {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, r + 6, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(232,200,115,.9)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
     // thân
     ctx.beginPath();
     ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
     ctx.fillStyle = this.def.color;
     ctx.fill();
-    ctx.lineWidth = this.isBoss ? 3 : 2;
-    ctx.strokeStyle = this.isBoss ? "#e8c873" : "rgba(0,0,0,.4)";
+    ctx.lineWidth = this.isBoss ? 3 : (this.isElite ? 2.5 : 2);
+    ctx.strokeStyle = this.isBoss ? "#e8c873" : (this.isElite ? "#e8c873" : "rgba(0,0,0,.4)");
     ctx.stroke();
     // vòng xanh khi đang bị làm chậm/đóng băng/choáng
     if (this._effectiveSpeedMult < 1 || this._stunned) {

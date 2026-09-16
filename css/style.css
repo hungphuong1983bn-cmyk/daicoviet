@@ -184,6 +184,8 @@ html,body{
   transition:box-shadow .2s ease, border-color .2s ease;
 }
 .hud-stat:hover{border-color:var(--vang-sang);box-shadow:0 0 0 1px rgba(232,200,115,.25);}
+.hud-tide{transition:background .3s ease, border-color .3s ease;}
+.hud-tide.hud-tide-high{background:rgba(80,140,180,.35);border-color:#78c8e6;}
 .hud-icon{font-size:15px;filter:drop-shadow(0 0 4px rgba(232,200,115,.4));}
 .hud-actions{margin-left:auto;display:flex;gap:8px;}
 .btn-exit{border-color:var(--son-son);}

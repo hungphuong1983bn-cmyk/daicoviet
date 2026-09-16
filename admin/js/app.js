@@ -432,6 +432,7 @@ const AdminApp = {
               '<select data-field="boss">' +
                 bossOptions.map((b) => '<option value="' + b.id + '" ' + (b.id === g.boss ? "selected" : "") + '>' + b.name + '</option>').join("") +
               '</select>' +
+              '<label>Delay(s) <input type="number" min="0" step="0.5" data-field="delay" value="' + (g.delay || 0) + '" style="width:55px;" title="Trễ trước khi nhóm này xuất hiện - dùng cho Phục kích"></label>' +
               '<button class="btn btn-tiny btn-danger" data-act="remove-group">✕</button>' +
             '</div>';
           }
@@ -439,8 +440,13 @@ const AdminApp = {
             '<select data-field="type">' +
               enemyOptions.map((id) => '<option value="' + id + '" ' + (id === g.type ? "selected" : "") + '>' + GAME_DATA.enemyTypes[id].name + '</option>').join("") +
             '</select>' +
-            '<label>SL <input type="number" min="1" data-field="count" value="' + g.count + '" style="width:60px;"></label>' +
-            '<label>Giãn cách(s) <input type="number" min="0.1" step="0.1" data-field="interval" value="' + g.interval + '" style="width:60px;"></label>' +
+            '<label>SL <input type="number" min="1" data-field="count" value="' + g.count + '" style="width:55px;"></label>' +
+            '<label>Giãn cách(s) <input type="number" min="0.1" step="0.1" data-field="interval" value="' + g.interval + '" style="width:55px;"></label>' +
+            '<label>Delay(s) <input type="number" min="0" step="0.5" data-field="delay" value="' + (g.delay || 0) + '" style="width:50px;" title="Trễ trước khi nhóm xuất hiện - Phục kích"></label>' +
+            '<label>×Speed <input type="number" min="0" step="0.05" data-field="speedMultiplier" value="' + (g.speedMultiplier || 1) + '" style="width:50px;" title="FAST WAVE"></label>' +
+            '<label>×HP <input type="number" min="0" step="0.05" data-field="hpMultiplier" value="' + (g.hpMultiplier || 1) + '" style="width:50px;" title="SWARM/ELITE WAVE"></label>' +
+            '<label>+Giáp <input type="number" min="0" step="1" data-field="armorBonus" value="' + (g.armorBonus || 0) + '" style="width:50px;" title="ARMOR WAVE"></label>' +
+            '<label>Elite đầu nhóm <input type="number" min="0" step="1" data-field="eliteCount" value="' + (g.eliteCount || 0) + '" style="width:50px;" title="ELITE WAVE"></label>' +
             '<button class="btn btn-tiny btn-danger" data-act="remove-group">✕</button>' +
           '</div>';
         }).join("");
@@ -450,6 +456,17 @@ const AdminApp = {
             '<button class="btn btn-tiny" data-act="add-boss">+ Boss</button>' +
             '<button class="btn btn-tiny btn-danger" data-act="remove-wave">Xoá Wave</button>' +
           '</div></div>' +
+          '<div class="wave-meta-row">' +
+            '<label>Loại đợt ' +
+              '<select data-field="waveType">' +
+                ["normal", "survival", "elite", "swarm", "fast", "armor", "boss"].map((t) =>
+                  '<option value="' + t + '" ' + ((wave.waveType || "normal") === t ? "selected" : "") + '>' + t + '</option>').join("") +
+              '</select></label>' +
+            '<label>Sống sót (s, nếu Survival) <input type="number" min="1" data-field="surviveSeconds" value="' + (wave.surviveSeconds || 25) + '" style="width:60px;"></label>' +
+            '<label>Cảnh báo (Toast) <input type="text" data-field="warning" value="' + (wave.warning || "").replace(/"/g, "&quot;") + '" style="width:220px;" placeholder="vd. ⚠ ĐỢT NHANH!"></label>' +
+            '<label>+Vàng <input type="number" min="0" data-field="reward" value="' + (wave.reward || 0) + '" style="width:55px;"></label>' +
+            '<label>+Score <input type="number" min="0" data-field="bonus" value="' + (wave.bonus || 0) + '" style="width:55px;"></label>' +
+          '</div>' +
           '<div class="wave-groups">' + groupsHtml + '</div>' +
         '</div>';
       }).join("") || '<p class="empty-row">Chưa có wave nào cho màn này.</p>';
@@ -471,13 +488,25 @@ const AdminApp = {
           waves.splice(wi, 1);
           renderEditor();
         };
+        card.querySelectorAll('.wave-meta-row [data-field]').forEach((input) => {
+          input.addEventListener("change", () => {
+            const field = input.dataset.field;
+            const val = input.type === "number" ? Number(input.value) : input.value;
+            if (val === "" || val === 0) delete waves[wi][field];
+            else waves[wi][field] = val;
+          });
+        });
         card.querySelectorAll(".wave-group").forEach((groupEl) => {
           const gi = Number(groupEl.dataset.gi);
           groupEl.querySelectorAll("select,input").forEach((input) => {
             input.addEventListener("change", () => {
               const field = input.dataset.field;
               const val = input.type === "number" ? Number(input.value) : input.value;
-              waves[wi].groups[gi][field] = val;
+              // 0/1 nghĩa là "không áp dụng" cho các hệ số nhân - xoá field
+              // để engine dùng mặc định, tránh lưu rác "speedMultiplier:1".
+              if ((field === "speedMultiplier" || field === "hpMultiplier") && val === 1) delete waves[wi].groups[gi][field];
+              else if ((field === "delay" || field === "armorBonus" || field === "eliteCount") && val === 0) delete waves[wi].groups[gi][field];
+              else waves[wi].groups[gi][field] = val;
             });
           });
           groupEl.querySelector('[data-act="remove-group"]').onclick = () => {

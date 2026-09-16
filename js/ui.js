@@ -56,6 +56,8 @@ const UI = {
       hudGold: document.getElementById("hud-gold"),
       hudHp: document.getElementById("hud-hp"),
       hudScore: document.getElementById("hud-score"),
+      hudTide: document.getElementById("hud-tide"),
+      hudTideLabel: document.getElementById("hud-tide-label"),
       hudWave: document.getElementById("hud-wave"),
       comboBadge: document.getElementById("combo-badge"),
       btnSpeed: document.getElementById("btn-speed"),
@@ -451,6 +453,10 @@ const UI = {
     this.els.hudGold.textContent = r.gold;
     this.els.hudHp.textContent = `${Math.max(0, Math.round(r.hp))}/${r.maxHp}`;
     this.els.hudScore.textContent = Math.round(r.score);
+    if (this.els.hudTide) {
+      const isTideMap = Game.levelDef && Game.levelDef.specialMechanic === "tide";
+      this.els.hudTide.classList.toggle("hidden", !isTideMap);
+    }
     const waveShown = Math.max(0, r.waveIndex + 1);
     this.els.hudWave.textContent = `${waveShown}/${r.totalWaves}`;
     this._updateBossBar();
@@ -530,6 +536,13 @@ const UI = {
   onHeroLeveledUp(heroId, level) {
     const hero = GAME_DATA.generals && GAME_DATA.generals[heroId];
     this.showToast(`🎉 ${hero ? (hero.nameVi || hero.name) : "Tướng"} đã lên Lv${level}!`);
+  },
+
+  /* Tide Mechanic (mục VI, riêng cho Bạch Đằng) */
+  onTideChanged(isHighTide) {
+    if (this.els.hudTideLabel) this.els.hudTideLabel.textContent = isHighTide ? "Triều dâng (chậm)" : "Triều rút (nhanh)";
+    if (this.els.hudTide) this.els.hudTide.classList.toggle("hud-tide-high", isHighTide);
+    this.showToast(isHighTide ? "🌊 Triều dâng! Quân địch di chuyển chậm lại." : "🌊 Triều rút! Quân địch di chuyển nhanh hơn.");
   },
 
   onWaveCleared() {

@@ -140,6 +140,14 @@ const Game = {
       elapsedTime: 0,
       noDamageTaken: true,
       killCount: 0,
+      // Wave Engine mở rộng (Giai đoạn 3, Priority 4): Special Wave + Tide
+      waveGroupsTemplate: null,
+      waveIsSurvival: false,
+      waveSurviveTimer: 0,
+      waveRewardBonus: 0,
+      waveScoreBonus: 0,
+      tidePhase: 0,
+      _isHighTide: false,
     };
     this._startLoop();
   },
@@ -177,6 +185,13 @@ const Game = {
       elapsedTime: snapshot.elapsedTime || 0,
       noDamageTaken: snapshot.noDamageTaken !== false,
       killCount: snapshot.killCount || 0,
+      waveGroupsTemplate: snapshot.waveGroupsTemplate || null,
+      waveIsSurvival: !!snapshot.waveIsSurvival,
+      waveSurviveTimer: snapshot.waveSurviveTimer || 0,
+      waveRewardBonus: snapshot.waveRewardBonus || 0,
+      waveScoreBonus: snapshot.waveScoreBonus || 0,
+      tidePhase: snapshot.tidePhase || 0,
+      _isHighTide: false,
     });
     for (const t of snapshot.towers || []) {
       const spot = levelDef.buildSpots[t.spotIndex];
@@ -211,6 +226,12 @@ const Game = {
       elapsedTime: r.elapsedTime,
       noDamageTaken: r.noDamageTaken,
       killCount: r.killCount,
+      waveGroupsTemplate: r.waveGroupsTemplate,
+      waveIsSurvival: r.waveIsSurvival,
+      waveSurviveTimer: r.waveSurviveTimer,
+      waveRewardBonus: r.waveRewardBonus,
+      waveScoreBonus: r.waveScoreBonus,
+      tidePhase: r.tidePhase,
     };
   },
 
@@ -258,27 +279,55 @@ const Game = {
       if (r.comboTimer <= 0) { r.comboTimer = 0; r.combo = 0; }
     }
 
-    // sinh quân theo hàng đợi
+    // Tide Mechanic (mục VI) - CHỈ áp dụng cho map có specialMechanic:"tide"
+    // (Bạch Đằng): triều dâng làm CHẬM toàn bộ địch đang có mặt, triều rút
+    // làm NHANH hơn - áp dụng thật vào tốc độ di chuyển, không chỉ đổi màu nước.
+    let mapSpeedMult = 1;
+    if (this.levelDef.specialMechanic === "tide") {
+      const cycle = GAME_DATA.config.tideCycleSeconds || 9;
+      r.tidePhase = (r.tidePhase || 0) + dt;
+      const isHighTide = Math.floor(r.tidePhase / cycle) % 2 === 0;
+      mapSpeedMult = isHighTide ? 0.7 : 1.2;
+      if (r._isHighTide !== isHighTide) {
+        r._isHighTide = isHighTide;
+        if (UI.onTideChanged) UI.onTideChanged(isHighTide);
+      }
+    }
+    r.mapSpeedMult = mapSpeedMult;
+
+    // sinh quân theo hàng đợi (Wave Engine mục XXIII - hỗ trợ delay phục
+    // kích qua marker "wait", không phát sinh địch)
     if (r.spawnQueue.length > 0) {
       r.spawnTimer -= dt;
       if (r.spawnTimer <= 0) {
         const next = r.spawnQueue.shift();
-        r.enemies.push(new Enemy(next.type, this.levelDef.path));
+        if (!next.wait) {
+          r.enemies.push(new Enemy(next.type, this.levelDef.path, {
+            speedMultiplier: next.speedMultiplier,
+            hpMultiplier: next.hpMultiplier,
+            elite: next.elite,
+          }));
+        }
         r.spawnTimer = next.interval;
       }
+    } else if (r.waveIsSurvival && r.waveSurviveTimer > 0) {
+      // SURVIVAL WAVE (mục XXIV): hết hàng đợi nhưng chưa hết giờ sống sót
+      // -> tái sinh lại đúng cấu hình nhóm quân của đợt này.
+      r.spawnQueue = this._buildSpawnQueue(r.waveGroupsTemplate);
     }
 
     // cập nhật địch
     for (const e of r.enemies) {
-      e.update(dt);
+      e.update(dt, mapSpeedMult);
       if (e.reachedCastle) {
         const dmg = Math.max(0, e.getEffectiveDamage() - r.castleDefense);
         if (dmg > 0) r.noDamageTaken = false; // mục XXV "No Damage Bonus"
         r.hp -= dmg;
       }
       if (e.killed) {
-        r.gold += Math.round(e.def.reward * rewardMult);
-        r.heroExpGained += Math.round((e.def.rewardExp || 0) * rewardMult);
+        const mult = rewardMult * (e.rewardMult || 1);
+        r.gold += Math.round(e.def.reward * mult);
+        r.heroExpGained += Math.round((e.def.rewardExp || 0) * mult);
         r.killCount++;
         GameState.recordKill(1);
         if (e.isBoss) { r.bossKilledThisRun = true; r.bossKillCount++; }
@@ -333,35 +382,58 @@ const Game = {
       return;
     }
 
-    // kết thúc đợt?
-    if (r.waveInProgress && r.spawnQueue.length === 0 && r.enemies.length === 0) {
-      r.waveInProgress = false;
-      const waveNumber = r.waveIndex + 1;
-      r.score += SCORE_RULES.WAVE_CLEAR_BONUS;
-      GameState.updateBestWave(r.levelId, waveNumber);
-      const waveRewardDef = GAME_DATA.rewards ? GAME_DATA.rewards.r_wave_clear : null;
-      if (waveRewardDef) GameState.addPersistentReward(waveRewardDef.gold || 0, waveRewardDef.exp || 0);
-      const completedQuests = QuestService.evaluate("WAVE_CLEARED", { waveNumber });
-      UI.onQuestsCompleted(completedQuests);
-
-      if (waveNumber >= r.totalWaves) {
-        r.status = "won";
-        GameState.clearRunSnapshot();
-        const hpPercent = Math.round((r.hp / r.maxHp) * 100);
-        GameState.recordRunResult(true);
-        GameState.addPersistentReward(this.levelDef.rewardGold || 0, this.levelDef.rewardExp || 0);
-        this._grantHeroExp();
-        const stats = this._finalizeScore(true);
-        const stageQuests = QuestService.evaluate("STAGE_CLEARED", { stageId: r.levelId, hpPercent });
-        let bossQuests = [];
-        if (r.bossKilledThisRun) bossQuests = QuestService.evaluate("BOSS_KILLED", {});
-        UI.onQuestsCompleted([...stageQuests, ...bossQuests]);
-        this._unlockNextStages(r.levelId);
-        UI.onGameEnded(true, stats);
-      } else {
-        UI.onWaveCleared();
-        this.persistRun();
+    // đếm ngược Đợt Sống Sót (SURVIVAL WAVE, mục XXIV): hết giờ -> coi như
+    // đã qua đợt, dọn số địch còn sót lại (không thưởng thêm cho chúng vì
+    // mục tiêu là "sống sót", không phải "diệt sạch").
+    if (r.waveIsSurvival && r.waveInProgress) {
+      r.waveSurviveTimer -= dt;
+      if (r.waveSurviveTimer <= 0) {
+        r.spawnQueue = [];
+        r.enemies = [];
+        this._completeWave();
+        return;
       }
+    }
+
+    // kết thúc đợt (thường - đã diệt sạch hàng đợi + toàn bộ địch trên sân)?
+    if (r.waveInProgress && !r.waveIsSurvival && r.spawnQueue.length === 0 && r.enemies.length === 0) {
+      this._completeWave();
+    }
+  },
+
+  /* Xử lý logic chung khi 1 đợt kết thúc (dù là dọn sạch địch hay hết giờ
+     Sống Sót): cộng thưởng riêng của đợt (Special Wave, mục XXIII-XXIV),
+     kiểm tra thắng màn hay sang đợt kế tiếp. */
+  _completeWave() {
+    const r = this.run;
+    r.waveInProgress = false;
+    r.waveIsSurvival = false;
+    const waveNumber = r.waveIndex + 1;
+    r.score += SCORE_RULES.WAVE_CLEAR_BONUS + (r.waveScoreBonus || 0);
+    if (r.waveRewardBonus) r.gold += r.waveRewardBonus;
+    GameState.updateBestWave(r.levelId, waveNumber);
+    const waveRewardDef = GAME_DATA.rewards ? GAME_DATA.rewards.r_wave_clear : null;
+    if (waveRewardDef) GameState.addPersistentReward(waveRewardDef.gold || 0, waveRewardDef.exp || 0);
+    const completedQuests = QuestService.evaluate("WAVE_CLEARED", { waveNumber });
+    UI.onQuestsCompleted(completedQuests);
+
+    if (waveNumber >= r.totalWaves) {
+      r.status = "won";
+      GameState.clearRunSnapshot();
+      const hpPercent = Math.round((r.hp / r.maxHp) * 100);
+      GameState.recordRunResult(true);
+      GameState.addPersistentReward(this.levelDef.rewardGold || 0, this.levelDef.rewardExp || 0);
+      this._grantHeroExp();
+      const stats = this._finalizeScore(true);
+      const stageQuests = QuestService.evaluate("STAGE_CLEARED", { stageId: r.levelId, hpPercent });
+      let bossQuests = [];
+      if (r.bossKilledThisRun) bossQuests = QuestService.evaluate("BOSS_KILLED", {});
+      UI.onQuestsCompleted([...stageQuests, ...bossQuests]);
+      this._unlockNextStages(r.levelId);
+      UI.onGameEnded(true, stats);
+    } else {
+      UI.onWaveCleared();
+      this.persistRun();
     }
   },
 
@@ -454,25 +526,47 @@ const Game = {
     r.waveIndex++;
     const wave = this.levelDef.waves[r.waveIndex];
     if (!wave) return;
+    if (wave.warning) UI.showToast(wave.warning);
+    r.waveGroupsTemplate = wave.groups;
+    r.waveIsSurvival = wave.waveType === "survival";
+    r.waveSurviveTimer = r.waveIsSurvival ? (wave.surviveSeconds || 25) : 0;
+    r.waveRewardBonus = wave.reward || 0;
+    r.waveScoreBonus = wave.bonus || 0;
+    r.spawnQueue = this._buildSpawnQueue(wave.groups);
+    r.spawnTimer = 0;
+    r.waveInProgress = true;
+    this.persistRun();
+  },
+
+  /* Dựng hàng đợi sinh quân từ danh sách "groups" của 1 đợt (mục XXIII).
+     Hỗ trợ: delay (khoảng nghỉ trước khi nhóm này xuất hiện - dùng cho
+     Ambush/phục kích), speedMultiplier/hpMultiplier (buff riêng cho nhóm -
+     dùng cho FAST WAVE/ARMOR WAVE), eliteCount (số con đầu nhóm là Elite -
+     dùng cho ELITE WAVE). Dùng lại cho cả lúc bắt đầu đợt lẫn khi
+     SURVIVAL WAVE cần tái sinh quân giữa chừng. */
+  _buildSpawnQueue(groups) {
     const spawnRate = GAME_DATA.config.enemySpawnRate || 1;
     const queue = [];
-    for (const group of wave.groups) {
+    for (const group of groups || []) {
+      if (group.delay) queue.push({ wait: true, interval: group.delay });
       if (group.boss) {
-        // Boss có thể đã bị Admin tắt (enabled:false) -> bị lọc khỏi
-        // GAME_DATA.enemyTypes. Bỏ qua an toàn thay vì làm vỡ trận.
-        if (!GAME_DATA.enemyTypes[group.boss]) continue;
+        if (!GAME_DATA.enemyTypes[group.boss]) continue; // Boss đã bị Admin tắt -> bỏ qua an toàn
         queue.push({ type: group.boss, interval: (group.interval || 1) * spawnRate });
         continue;
       }
       if (!GAME_DATA.enemyTypes[group.type]) continue; // loại địch đã bị tắt/xoá
       for (let i = 0; i < group.count; i++) {
-        queue.push({ type: group.type, interval: group.interval * spawnRate });
+        queue.push({
+          type: group.type,
+          interval: group.interval * spawnRate,
+          speedMultiplier: group.speedMultiplier,
+          hpMultiplier: group.hpMultiplier,
+          armorBonus: group.armorBonus,
+          elite: i < (group.eliteCount || 0),
+        });
       }
     }
-    r.spawnQueue = queue;
-    r.spawnTimer = 0;
-    r.waveInProgress = true;
-    this.persistRun();
+    return queue;
   },
 
   /* ---------------- XÂY / NÂNG CẤP QUÂN THỦ THÀNH ---------------- */

@@ -136,6 +136,8 @@ button{font-family:inherit;}
 .wave-groups{display:flex;flex-direction:column;gap:8px;}
 .wave-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--panel-2);padding:8px 10px;border-radius:7px;font-size:12px;}
 .wave-group select,.wave-group input{background:var(--go-lim);border:1px solid var(--border);color:var(--giay-do);border-radius:5px;padding:4px 6px;font-size:12px;}
+.wave-meta-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(232,200,115,.08);padding:8px 10px;border-radius:7px;font-size:12px;margin-bottom:8px;}
+.wave-meta-row select,.wave-meta-row input{background:var(--go-lim);border:1px solid var(--border);color:var(--giay-do);border-radius:5px;padding:4px 6px;font-size:12px;}
 .boss-group{border:1px dashed var(--vang-dong);}
 
 /* ---------- Backup ---------- */

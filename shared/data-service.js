@@ -373,7 +373,8 @@ const DataService = (() => {
           { groups: [{ type: "quan_su_quan", count: 6, interval: 0.8 }, { type: "ky_binh", count: 3, interval: 0.7 }] },
           { groups: [{ type: "ky_binh", count: 5, interval: 0.6 }, { type: "truong_giap", count: 3, interval: 1.0 }] },
           { groups: [{ type: "quan_su_quan", count: 8, interval: 0.6 }, { type: "truong_giap", count: 4, interval: 0.9 }] },
-          { groups: [{ type: "truong_giap", count: 5, interval: 0.8 }, { type: "ky_binh", count: 6, interval: 0.5 }, { boss: "boss_hoa_lu" }] },
+          { waveType: "boss", warning: "⚠ CẢNH BÁO: SỨ QUÂN HOẢ LONG XUẤT HIỆN!",
+            groups: [{ type: "truong_giap", count: 5, interval: 0.8 }, { type: "ky_binh", count: 6, interval: 0.5 }, { boss: "boss_hoa_lu" }] },
         ],
       },
       {
@@ -401,8 +402,10 @@ const DataService = (() => {
           { groups: [{ type: "ky_binh", count: 8, interval: 0.55 }, { type: "cung_thu_dich", count: 4, interval: 0.8 }] },
           { groups: [{ type: "truong_giap", count: 8, interval: 0.7 }, { type: "cung_thu_dich", count: 5, interval: 0.6 }] },
           { groups: [{ type: "ky_binh", count: 10, interval: 0.45 }, { type: "truong_giap", count: 6, interval: 0.75 }] },
-          { groups: [{ type: "tuong_giac", count: 2, interval: 1.2 }, { type: "truong_giap", count: 6, interval: 0.6 }] },
-          { groups: [{ type: "truong_giap", count: 8, interval: 0.5 }, { type: "cung_thu_dich", count: 6, interval: 0.5 }, { boss: "boss_dai_la" }] },
+          { waveType: "elite", warning: "⚠ ĐỢT TINH NHUỆ! Tướng giặc dẫn đầu được tăng cường.",
+            groups: [{ type: "tuong_giac", count: 2, interval: 1.2, eliteCount: 2 }, { type: "truong_giap", count: 6, interval: 0.6 }] },
+          { waveType: "boss", warning: "⚠ CẢNH BÁO: ĐÔ HỘ SỨ CAO CHÍNH BÌNH XUẤT HIỆN!",
+            groups: [{ type: "truong_giap", count: 8, interval: 0.5 }, { type: "cung_thu_dich", count: 6, interval: 0.5 }, { boss: "boss_dai_la" }] },
         ],
       },
       {
@@ -420,6 +423,7 @@ const DataService = (() => {
           { x: 700, y: 230 }, { x: 900, y: 230 },
         ],
         castle: { x: 930, y: 230 },
+        specialMechanic: "tide",
         buildSpots: [
           { x: 100, y: 190 }, { x: 320, y: 100 }, { x: 350, y: 270 },
           { x: 480, y: 260 }, { x: 600, y: 440 }, { x: 620, y: 230 },
@@ -428,10 +432,12 @@ const DataService = (() => {
         waves: [
           { groups: [{ type: "ky_binh", count: 12, interval: 0.5 }] },
           { groups: [{ type: "cung_thu_dich", count: 10, interval: 0.5 }, { type: "truong_giap", count: 6, interval: 0.7 }] },
-          { groups: [{ type: "tuong_giac", count: 3, interval: 1.0 }, { type: "ky_binh", count: 10, interval: 0.4 }] },
+          { waveType: "fast", warning: "⚠ ĐỢT NHANH! Nước rút, quân địch di chuyển thần tốc.",
+            groups: [{ type: "tuong_giac", count: 3, interval: 1.0 }, { type: "ky_binh", count: 10, interval: 0.4, speedMultiplier: 1.35 }] },
           { groups: [{ type: "truong_giap", count: 12, interval: 0.5 }, { type: "cung_thu_dich", count: 8, interval: 0.45 }] },
           { groups: [{ type: "tuong_giac", count: 4, interval: 0.8 }, { type: "truong_giap", count: 10, interval: 0.4 }] },
-          { groups: [{ type: "truong_giap", count: 10, interval: 0.4 }, { type: "ky_binh", count: 10, interval: 0.35 }, { boss: "boss_bach_dang" }] },
+          { waveType: "boss", warning: "⚠ CẢNH BÁO: THUỶ TẶC CHÚA XUẤT HIỆN!",
+            groups: [{ type: "truong_giap", count: 10, interval: 0.4 }, { type: "ky_binh", count: 10, interval: 0.35 }, { boss: "boss_bach_dang" }] },
         ],
       },
       {
@@ -449,6 +455,7 @@ const DataService = (() => {
           { x: 640, y: 320 }, { x: 860, y: 320 },
         ],
         castle: { x: 900, y: 320 },
+        specialMechanic: "ambush",
         buildSpots: [
           { x: 90, y: 230 }, { x: 300, y: 150 }, { x: 300, y: 400 },
           { x: 420, y: 240 }, { x: 530, y: 80 }, { x: 530, y: 320 },
@@ -456,11 +463,14 @@ const DataService = (() => {
         ],
         waves: [
           { groups: [{ type: "quan_su_quan", count: 10, interval: 0.6 }] },
-          { groups: [{ type: "ky_binh", count: 8, interval: 0.5 }, { type: "cung_thu_dich", count: 5, interval: 0.6 }] },
+          { warning: "⚠ PHỤC KÍCH! Cẩn thận quân địch từ phía sau.",
+            groups: [{ type: "ky_binh", count: 8, interval: 0.5 }, { type: "cung_thu_dich", count: 5, interval: 0.6, delay: 3.5 }] },
           { groups: [{ type: "truong_giap", count: 10, interval: 0.6 }, { type: "thiet_ky", count: 4, interval: 0.9 }] },
           { groups: [{ type: "cung_no_tong", count: 8, interval: 0.6 }, { type: "ky_binh", count: 10, interval: 0.4 }] },
-          { groups: [{ type: "tuong_giac", count: 4, interval: 0.9 }, { type: "thiet_ky", count: 6, interval: 0.7 }] },
-          { groups: [{ type: "truong_giap", count: 10, interval: 0.4 }, { type: "thiet_ky", count: 8, interval: 0.6 }, { boss: "boss_hau_nhan_bao" }] },
+          { warning: "⚠ PHỤC KÍCH! Tướng giặc bất ngờ xuất hiện giữa trận.",
+            groups: [{ type: "thiet_ky", count: 6, interval: 0.7 }, { type: "tuong_giac", count: 4, interval: 0.9, delay: 6 }] },
+          { waveType: "boss", warning: "⚠ CẢNH BÁO: HẦU NHÂN BẢO XUẤT HIỆN!",
+            groups: [{ type: "truong_giap", count: 10, interval: 0.4 }, { type: "thiet_ky", count: 8, interval: 0.6 }, { boss: "boss_hau_nhan_bao" }] },
         ],
       },
       {
@@ -484,12 +494,14 @@ const DataService = (() => {
           { x: 710, y: 200 }, { x: 710, y: 340 }, { x: 860, y: 270 },
         ],
         waves: [
-          { groups: [{ type: "ky_binh", count: 12, interval: 0.5 }] },
+          { waveType: "swarm", warning: "⚠ ĐỢT QUÂN ĐÔNG! Số lượng áp đảo nhưng máu mỏng.",
+            groups: [{ type: "ky_binh", count: 20, interval: 0.3, hpMultiplier: 0.6 }] },
           { groups: [{ type: "cung_no_tong", count: 10, interval: 0.5 }, { type: "truong_giap", count: 6, interval: 0.7 }] },
           { groups: [{ type: "thiet_ky", count: 8, interval: 0.6 }, { type: "cung_thu_dich", count: 8, interval: 0.5 }] },
           { groups: [{ type: "tuong_giac", count: 4, interval: 0.8 }, { type: "cung_no_tong", count: 10, interval: 0.45 }] },
           { groups: [{ type: "thiet_ky", count: 10, interval: 0.5 }, { type: "ky_binh", count: 12, interval: 0.4 }] },
-          { groups: [{ type: "truong_giap", count: 12, interval: 0.4 }, { type: "thiet_ky", count: 10, interval: 0.45 }, { boss: "boss_quach_quan_bien" }] },
+          { waveType: "boss", warning: "⚠ CẢNH BÁO: QUÁCH QUÂN BIỆN XUẤT HIỆN!",
+            groups: [{ type: "truong_giap", count: 12, interval: 0.4 }, { type: "thiet_ky", count: 10, interval: 0.45 }, { boss: "boss_quach_quan_bien" }] },
         ],
       },
       {
@@ -515,11 +527,14 @@ const DataService = (() => {
         waves: [
           { groups: [{ type: "ky_binh", count: 14, interval: 0.45 }] },
           { groups: [{ type: "cung_no_tong", count: 12, interval: 0.45 }, { type: "thiet_ky", count: 6, interval: 0.6 }] },
-          { groups: [{ type: "truong_giap", count: 14, interval: 0.4 }, { type: "tuong_giac", count: 4, interval: 0.8 }] },
+          { waveType: "armor", warning: "⚠ ĐỢT THIẾT GIÁP! Quân địch phòng thủ dày hơn hẳn.",
+            groups: [{ type: "truong_giap", count: 14, interval: 0.4, armorBonus: 4 }, { type: "tuong_giac", count: 4, interval: 0.8, armorBonus: 4 }] },
           { groups: [{ type: "thiet_ky", count: 12, interval: 0.5 }, { type: "cung_no_tong", count: 12, interval: 0.4 }] },
           { groups: [{ type: "tuong_giac", count: 6, interval: 0.7 }, { type: "thiet_ky", count: 10, interval: 0.45 }] },
-          { groups: [{ type: "truong_giap", count: 14, interval: 0.35 }, { type: "cung_no_tong", count: 14, interval: 0.35 }] },
-          { groups: [{ type: "thiet_ky", count: 14, interval: 0.4 }, { type: "tuong_giac", count: 6, interval: 0.6 }, { boss: "boss_giac_phuong_bac" }] },
+          { waveType: "survival", surviveSeconds: 30, warning: "⚠ SỐNG SÓT 30 GIÂY! Quân địch sẽ liên tục kéo đến.",
+            groups: [{ type: "truong_giap", count: 4, interval: 0.6 }, { type: "cung_no_tong", count: 4, interval: 0.6 }] },
+          { waveType: "boss", warning: "⚠ CẢNH BÁO TỐI HẬU: ĐẠI TƯỚNG XÂM LĂNG XUẤT HIỆN!",
+            groups: [{ type: "thiet_ky", count: 14, interval: 0.4 }, { type: "tuong_giac", count: 6, interval: 0.6 }, { boss: "boss_giac_phuong_bac" }] },
         ],
       },
     ];
@@ -1201,6 +1216,12 @@ const DataService = (() => {
         castle: stage.castle,
         buildSpots: stage.buildSpots,
         waves: stage.waves,
+        // Priority 5 (Score/3-Sao) + Priority 4 (Wave/Map đặc biệt) - PHẢI
+        // trộn vào đây, nếu không Game.levelDef sẽ luôn đọc undefined dù
+        // dữ liệu gốc trong collection "stages" đã có đầy đủ.
+        starConditions: stage.starConditions,
+        targetTime: stage.targetTime,
+        specialMechanic: stage.specialMechanic,
       };
     }
 
