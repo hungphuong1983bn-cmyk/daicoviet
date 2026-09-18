@@ -37,7 +37,7 @@ const DataService = (() => {
     adminLogs: "collection:adminLogs",
   };
 
-  const SCHEMA_VERSION = 7;
+  const SCHEMA_VERSION = 8;
 
   /* ---------------------------------------------------------
      DỮ LIỆU MẶC ĐỊNH (seed)
@@ -344,6 +344,52 @@ const DataService = (() => {
           },
         ],
       },
+      {
+        id: "boss_nguyen_sieu", name: "Sứ Quân Nguyễn Siêu",
+        hp: 6800, damage: 18, defense: 18, resistance: 26,
+        speed: 34, reward: 1250, rewardExp: 600,
+        skill: "Cố Thủ Cổ Loa (hồi 4% máu tối đa mỗi 4 giây, +15% Defense khi máu dưới 60%)",
+        skillCooldown: 0,
+        icon: "🏯", color: "#3a5a2f",
+        description: "Một trong 12 sứ quân, cố thủ thành Cổ Loa cũ, không chịu quy phục Đinh Bộ Lĩnh.",
+        enabled: true,
+        phases: defaultBossPhases(),
+        abilities: [
+          {
+            id: "co_thu_co_loa", name: "Cố Thủ Cổ Loa",
+            trigger: { type: "interval", seconds: 4 }, cooldown: 4,
+            effect: "heal_self", healPercent: 4,
+          },
+          {
+            id: "phong_thu_kien_co", name: "Phòng Thủ Kiên Cố",
+            trigger: { type: "hp_below", percent: 60 }, once: true,
+            effect: "self_buff", speedBonus: 0, damageBonus: 0.15,
+          },
+        ],
+      },
+      {
+        id: "boss_do_canh_thac", name: "Sứ Quân Đỗ Cảnh Thạc",
+        hp: 8200, damage: 20, defense: 20, resistance: 28,
+        speed: 33, reward: 1600, rewardExp: 750,
+        skill: "Song Kiếm Hợp Bích (+35% tốc độ đánh khi HP<50%, triệu hồi 4 Thiết kỵ khi HP<30%)",
+        skillCooldown: 0,
+        icon: "⚔️", color: "#5a1f1f",
+        description: "Sứ quân cuối cùng còn ngoan cố kháng cự tại Siêu Loại, trận chiến khép lại cuộc dẹp loạn 12 sứ quân.",
+        enabled: true,
+        phases: defaultBossPhases(),
+        abilities: [
+          {
+            id: "song_kiem_hop_bich", name: "Song Kiếm Hợp Bích",
+            trigger: { type: "hp_below", percent: 50 }, once: true,
+            effect: "self_buff", speedBonus: 0.35, damageBonus: 0.1,
+          },
+          {
+            id: "trieu_hoi_thiet_ky", name: "Triệu Hồi Thiết Kỵ",
+            trigger: { type: "hp_below", percent: 30 }, cooldown: 25,
+            effect: "summon", summonType: "thiet_ky", summonCount: 4,
+          },
+        ],
+      },
     ];
   }
 
@@ -374,6 +420,7 @@ const DataService = (() => {
           { groups: [{ type: "quan_su_quan", count: 6, interval: 0.8 }, { type: "ky_binh", count: 3, interval: 0.7 }] },
           { groups: [{ type: "ky_binh", count: 5, interval: 0.6 }, { type: "truong_giap", count: 3, interval: 1.0 }] },
           { groups: [{ type: "quan_su_quan", count: 8, interval: 0.6 }, { type: "truong_giap", count: 4, interval: 0.9 }] },
+          { groups: [{ type: "ky_binh", count: 8, interval: 0.5 }, { type: "cung_thu_dich", count: 4, interval: 0.7 }] },
           { waveType: "boss", warning: "⚠ CẢNH BÁO: SỨ QUÂN HOẢ LONG XUẤT HIỆN!",
             groups: [{ type: "truong_giap", count: 5, interval: 0.8 }, { type: "ky_binh", count: 6, interval: 0.5 }, { boss: "boss_hoa_lu" }] },
         ],
@@ -405,6 +452,7 @@ const DataService = (() => {
           { groups: [{ type: "ky_binh", count: 10, interval: 0.45 }, { type: "truong_giap", count: 6, interval: 0.75 }] },
           { waveType: "elite", warning: "⚠ ĐỢT TINH NHUỆ! Tướng giặc dẫn đầu được tăng cường.",
             groups: [{ type: "tuong_giac", count: 2, interval: 1.2, eliteCount: 2 }, { type: "truong_giap", count: 6, interval: 0.6 }] },
+          { groups: [{ type: "cung_thu_dich", count: 10, interval: 0.5 }, { type: "ky_binh", count: 10, interval: 0.45 }] },
           { waveType: "boss", warning: "⚠ CẢNH BÁO: ĐÔ HỘ SỨ CAO CHÍNH BÌNH XUẤT HIỆN!",
             groups: [{ type: "truong_giap", count: 8, interval: 0.5 }, { type: "cung_thu_dich", count: 6, interval: 0.5 }, { boss: "boss_dai_la" }] },
         ],
@@ -437,6 +485,7 @@ const DataService = (() => {
             groups: [{ type: "tuong_giac", count: 3, interval: 1.0 }, { type: "ky_binh", count: 10, interval: 0.4, speedMultiplier: 1.35 }] },
           { groups: [{ type: "truong_giap", count: 12, interval: 0.5 }, { type: "cung_thu_dich", count: 8, interval: 0.45 }] },
           { groups: [{ type: "tuong_giac", count: 4, interval: 0.8 }, { type: "truong_giap", count: 10, interval: 0.4 }] },
+          { groups: [{ type: "ky_binh", count: 14, interval: 0.35, speedMultiplier: 1.2 }, { type: "cung_thu_dich", count: 8, interval: 0.5 }] },
           { waveType: "boss", warning: "⚠ CẢNH BÁO: THUỶ TẶC CHÚA XUẤT HIỆN!",
             groups: [{ type: "truong_giap", count: 10, interval: 0.4 }, { type: "ky_binh", count: 10, interval: 0.35 }, { boss: "boss_bach_dang" }] },
         ],
@@ -470,6 +519,7 @@ const DataService = (() => {
           { groups: [{ type: "cung_no_tong", count: 8, interval: 0.6 }, { type: "ky_binh", count: 10, interval: 0.4 }] },
           { warning: "⚠ PHỤC KÍCH! Tướng giặc bất ngờ xuất hiện giữa trận.",
             groups: [{ type: "thiet_ky", count: 6, interval: 0.7 }, { type: "tuong_giac", count: 4, interval: 0.9, delay: 6 }] },
+          { groups: [{ type: "cung_no_tong", count: 10, interval: 0.5 }, { type: "thiet_ky", count: 8, interval: 0.55 }] },
           { waveType: "boss", warning: "⚠ CẢNH BÁO: HẦU NHÂN BẢO XUẤT HIỆN!",
             groups: [{ type: "truong_giap", count: 10, interval: 0.4 }, { type: "thiet_ky", count: 8, interval: 0.6 }, { boss: "boss_hau_nhan_bao" }] },
         ],
@@ -501,6 +551,7 @@ const DataService = (() => {
           { groups: [{ type: "thiet_ky", count: 8, interval: 0.6 }, { type: "cung_thu_dich", count: 8, interval: 0.5 }] },
           { groups: [{ type: "tuong_giac", count: 4, interval: 0.8 }, { type: "cung_no_tong", count: 10, interval: 0.45 }] },
           { groups: [{ type: "thiet_ky", count: 10, interval: 0.5 }, { type: "ky_binh", count: 12, interval: 0.4 }] },
+          { groups: [{ type: "tuong_giac", count: 5, interval: 0.75 }, { type: "cung_no_tong", count: 12, interval: 0.4 }] },
           { waveType: "boss", warning: "⚠ CẢNH BÁO: QUÁCH QUÂN BIỆN XUẤT HIỆN!",
             groups: [{ type: "truong_giap", count: 12, interval: 0.4 }, { type: "thiet_ky", count: 10, interval: 0.45 }, { boss: "boss_quach_quan_bien" }] },
         ],
@@ -534,8 +585,82 @@ const DataService = (() => {
           { groups: [{ type: "tuong_giac", count: 6, interval: 0.7 }, { type: "thiet_ky", count: 10, interval: 0.45 }] },
           { waveType: "survival", surviveSeconds: 30, warning: "⚠ SỐNG SÓT 30 GIÂY! Quân địch sẽ liên tục kéo đến.",
             groups: [{ type: "truong_giap", count: 4, interval: 0.6 }, { type: "cung_no_tong", count: 4, interval: 0.6 }] },
+          { groups: [{ type: "thiet_ky", count: 12, interval: 0.45 }, { type: "tuong_giac", count: 5, interval: 0.7 }] },
           { waveType: "boss", warning: "⚠ CẢNH BÁO TỐI HẬU: ĐẠI TƯỚNG XÂM LĂNG XUẤT HIỆN!",
             groups: [{ type: "thiet_ky", count: 14, interval: 0.4 }, { type: "tuong_giac", count: 6, interval: 0.6 }, { boss: "boss_giac_phuong_bac" }] },
+        ],
+      },
+      {
+        id: "co_loa", order: 7, name: "Thành Cổ Loa",
+        mapName: "Cổ Loa cửu trùng thành",
+        description: "Sứ quân Nguyễn Siêu cố thủ trong toà thành cổ hình xoáy trôn ốc, không chịu quy phục.",
+        background: "co_loa",
+        difficulty: 7,
+        unlockCondition: { type: "stage_cleared", stageId: "thang_long" },
+        rewardGold: 420, rewardExp: 230,
+        enabled: true,
+        path: [
+          { x: -40, y: 300 }, { x: 160, y: 300 }, { x: 160, y: 120 },
+          { x: 380, y: 120 }, { x: 380, y: 420 }, { x: 580, y: 420 },
+          { x: 580, y: 200 }, { x: 380, y: 200 }, { x: 760, y: 200 },
+          { x: 760, y: 340 }, { x: 900, y: 340 },
+        ],
+        castle: { x: 930, y: 340 },
+        buildSpots: [
+          { x: 90, y: 210 }, { x: 270, y: 120 }, { x: 270, y: 420 },
+          { x: 470, y: 320 }, { x: 470, y: 120 }, { x: 660, y: 260 },
+          { x: 660, y: 420 }, { x: 830, y: 260 }, { x: 830, y: 420 },
+        ],
+        waves: [
+          { groups: [{ type: "truong_giap", count: 12, interval: 0.5 }] },
+          { groups: [{ type: "cung_no_tong", count: 10, interval: 0.5 }, { type: "ky_binh", count: 10, interval: 0.4 }] },
+          { waveType: "armor", warning: "⚠ ĐỢT THIẾT GIÁP! Tường thành Cổ Loa vững chắc tiếp sức cho địch.",
+            groups: [{ type: "truong_giap", count: 14, interval: 0.4, armorBonus: 5 }, { type: "thiet_ky", count: 6, interval: 0.6, armorBonus: 5 }] },
+          { warning: "⚠ PHỤC KÍCH! Địch phục sẵn trong các vòng thành xoáy ốc.",
+            groups: [{ type: "cung_no_tong", count: 10, interval: 0.45 }, { type: "tuong_giac", count: 3, interval: 0.9, delay: 5 }] },
+          { waveType: "elite", warning: "⚠ ĐỢT TINH NHUỆ! Cấm quân của Sứ Quân được tăng cường.",
+            groups: [{ type: "tuong_giac", count: 3, interval: 1.0, eliteCount: 3 }, { type: "thiet_ky", count: 8, interval: 0.5 }] },
+          { groups: [{ type: "thiet_ky", count: 14, interval: 0.4 }, { type: "cung_no_tong", count: 12, interval: 0.4 }] },
+          { waveType: "boss", warning: "⚠ CẢNH BÁO: SỨ QUÂN NGUYỄN SIÊU XUẤT HIỆN!",
+            groups: [{ type: "truong_giap", count: 12, interval: 0.4 }, { type: "thiet_ky", count: 10, interval: 0.45 }, { boss: "boss_nguyen_sieu" }] },
+        ],
+      },
+      {
+        id: "sieu_loai", order: 8, name: "Siêu Loại",
+        mapName: "Chiến luỹ Siêu Loại",
+        description: "Trận đánh cuối cùng: sứ quân Đỗ Cảnh Thạc gục ngã, khép lại loạn 12 sứ quân, mở ra Đại Cồ Việt thống nhất.",
+        background: "sieu_loai",
+        difficulty: 8,
+        unlockCondition: { type: "stage_cleared", stageId: "co_loa" },
+        rewardGold: 550, rewardExp: 300,
+        enabled: true,
+        path: [
+          { x: -40, y: 120 }, { x: 200, y: 120 }, { x: 200, y: 440 },
+          { x: 420, y: 440 }, { x: 420, y: 80 }, { x: 620, y: 80 },
+          { x: 620, y: 300 }, { x: 440, y: 300 }, { x: 800, y: 300 },
+          { x: 800, y: 460 }, { x: 900, y: 460 },
+        ],
+        castle: { x: 930, y: 460 },
+        buildSpots: [
+          { x: 90, y: 280 }, { x: 310, y: 120 }, { x: 310, y: 440 },
+          { x: 520, y: 260 }, { x: 520, y: 80 }, { x: 620, y: 190 },
+          { x: 710, y: 300 }, { x: 710, y: 460 }, { x: 850, y: 380 },
+        ],
+        waves: [
+          { groups: [{ type: "thiet_ky", count: 14, interval: 0.4 }] },
+          { waveType: "swarm", warning: "⚠ ĐỢT QUÂN ĐÔNG! Tàn quân sứ quân tràn tới từ mọi phía.",
+            groups: [{ type: "quan_su_quan", count: 24, interval: 0.25, hpMultiplier: 0.7 }] },
+          { groups: [{ type: "cung_no_tong", count: 14, interval: 0.4 }, { type: "tuong_giac", count: 4, interval: 0.8 }] },
+          { warning: "⚠ PHỤC KÍCH! Kỵ binh vòng ra sau lưng.",
+            groups: [{ type: "thiet_ky", count: 12, interval: 0.45 }, { type: "ky_binh", count: 12, interval: 0.35, delay: 5 }] },
+          { waveType: "fast", warning: "⚠ ĐỢT NHANH! Kỵ binh tinh nhuệ phi nước đại.",
+            groups: [{ type: "ky_binh", count: 16, interval: 0.3, speedMultiplier: 1.3 }, { type: "tuong_giac", count: 3, interval: 0.9 }] },
+          { waveType: "elite", warning: "⚠ ĐỢT TINH NHUỆ! Thân binh của Sứ Quân xuất trận.",
+            groups: [{ type: "tuong_giac", count: 4, interval: 0.85, eliteCount: 4 }, { type: "thiet_ky", count: 10, interval: 0.45 }] },
+          { waveType: "survival", surviveSeconds: 35, warning: "⚠ SỐNG SÓT 35 GIÂY! Đây là đợt tổng phản công cuối cùng.",
+            groups: [{ type: "thiet_ky", count: 5, interval: 0.5 }, { type: "cung_no_tong", count: 5, interval: 0.5 }] },
+          { waveType: "boss", warning: "⚠ CẢNH BÁO TỐI HẬU: SỨ QUÂN ĐỖ CẢNH THẠC XUẤT HIỆN!",
+            groups: [{ type: "thiet_ky", count: 16, interval: 0.35 }, { type: "tuong_giac", count: 7, interval: 0.55 }, { boss: "boss_do_canh_thac" }] },
         ],
       },
     ];
@@ -1113,6 +1238,45 @@ const DataService = (() => {
     console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 7: thêm hệ thống Thành tích thật (collection achievements, player.achievements).");
   }
 
+  /* Đảm bảo nội dung "thêm đợt chơi + thêm màn chơi" (yêu cầu trực tiếp
+     sau Giai đoạn 3) có mặt: 2 Boss mới, 2 màn mới (Cổ Loa, Siêu Loại),
+     và thêm 1 wave cho mỗi màn cũ trước đợt Boss. Với các stage ĐÃ TỒN
+     TẠI, chỉ THAY `waves` khi số wave hiện tại còn ÍT HƠN bản mới (tức
+     là chưa được vá) - không đụng tới name/description/enabled hay bất
+     kỳ field nào khác Admin có thể đã tự sửa. Đây là migration nội
+     dung theo yêu cầu cụ thể của người vận hành, không phải fix schema
+     đơn thuần, nhưng vẫn giữ nguyên tắc "chỉ thêm, không xoá tuỳ biến". */
+  function ensureExpandedCampaignContent() {
+    const defaultBossList = defaultBosses();
+    const bosses = list("bosses");
+    const bossIds = new Set(bosses.map((b) => b.id));
+    const newBosses = defaultBossList.filter((b) => !bossIds.has(b.id));
+    if (newBosses.length) StorageService.set(KEYS.bosses, bosses.concat(newBosses));
+
+    const defaultStageList = defaultStages();
+    const defaultStageById = {};
+    for (const s of defaultStageList) defaultStageById[s.id] = s;
+    const stages = list("stages");
+    const stageIds = new Set(stages.map((s) => s.id));
+
+    const patchedStages = stages.map((s) => {
+      const def = defaultStageById[s.id];
+      if (!def || !Array.isArray(s.waves) || s.waves.length >= def.waves.length) return s;
+      return Object.assign({}, s, { waves: def.waves });
+    });
+    const newStages = defaultStageList.filter((s) => !stageIds.has(s.id));
+    StorageService.set(KEYS.stages, patchedStages.concat(newStages));
+  }
+
+  /* Di trú schemaVersion 7 -> 8 (thêm đợt chơi + 2 màn chơi mới). */
+  function migrateSchemaV7ToV8() {
+    const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
+    if (currentVersion >= 8) return;
+    ensureExpandedCampaignContent();
+    StorageService.set(KEYS.schemaVersion, 8);
+    console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 8: thêm 2 màn chơi mới (Cổ Loa, Siêu Loại) + 2 Boss mới + thêm 1 wave cho mỗi màn cũ.");
+  }
+
   function ensureSeeded() {
     const defaults = defaultAll();
     Object.keys(KEYS).forEach((name) => {
@@ -1128,6 +1292,7 @@ const DataService = (() => {
     migrateSchemaV4ToV5();
     migrateSchemaV5ToV6();
     migrateSchemaV6ToV7();
+    migrateSchemaV7ToV8();
     if (!StorageService.has(KEYS.schemaVersion)) {
       StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
     }
@@ -1283,6 +1448,7 @@ const DataService = (() => {
     ensureHeroProgressionFields(); // vá Hero EXP/Level thật nếu snapshot import là bản backup cũ (v4)
     ensureScoreProgressionFields(); // vá Score/Combo/3-Sao thật nếu snapshot import là bản backup cũ (v5)
     ensureAchievementFields(); // vá Thành tích thật nếu snapshot import là bản backup cũ (v6)
+    ensureExpandedCampaignContent(); // vá 2 màn/2 Boss/wave mới nếu snapshot import là bản backup cũ (v7)
     StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
   }
 
