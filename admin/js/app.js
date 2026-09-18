@@ -580,6 +580,8 @@ const AdminApp = {
       ["soundEnabled", "Sound (công tắc tổng)"], ["musicEnabled", "Music (nhạc nền tổng hợp bằng Web Audio, theo chủ đề màn)"],
       ["sfxEnabled", "SFX (tiếng bắn, trúng đòn, nâng cấp, bán tháp, Boss, Victory)"],
       ["tutorialEnabled", "Tutorial"], ["autoSaveEnabled", "Auto save"],
+      ["render3dEnabled", "Đồ hoạ 3D (WebGL - tự quay về 2D nếu máy không hỗ trợ)"],
+      ["shadows3d", "Bóng đổ trong chế độ 3D (tắt đi để nhẹ máy)"],
       ["debugMode", "Debug mode (hiện vùng bắn của tháp)"], ["showDamageNumbers", "Damage numbers"],
       ["showEnemyHpBar", "Enemy HP bar"], ["showFps", "FPS display"],
     ];

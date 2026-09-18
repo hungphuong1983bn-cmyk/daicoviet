@@ -55,6 +55,8 @@ const UI = {
       btnToggleMusic: $("btn-toggle-music"),
       btnToggleSfx: $("btn-toggle-sfx"),
       btnToggleDamageNumbers: $("btn-toggle-damage-numbers"),
+      btnToggle3d: $("btn-toggle-3d"),
+      btnToggleShadows: $("btn-toggle-shadows"),
       btnResetProgress: $("btn-reset-progress"),
 
       levelList: $("level-list"),
@@ -151,6 +153,32 @@ const UI = {
         const cur = !(cfg.features && cfg.features.showDamageNumbers === false);
         DataService.setConfig({ features: { showDamageNumbers: !cur } });
         rebuildGameData();
+        this._refreshSettingsButtons();
+      });
+    }
+    if (e.btnToggle3d) {
+      e.btnToggle3d.addEventListener("click", () => {
+        const cfg = DataService.getConfig();
+        const cur = !(cfg.features && cfg.features.render3dEnabled === false);
+        if (typeof Renderer3D !== "undefined") Renderer3D.setEnabled(!cur);
+        else DataService.setConfig({ features: { render3dEnabled: !cur } });
+        rebuildGameData();
+        this._refreshSettingsButtons();
+        if (typeof Renderer3D !== "undefined" && !cur && !Renderer3D.active()) {
+          this.showToast("Máy hoặc trình duyệt không hỗ trợ WebGL — vẫn chơi ở chế độ 2D.");
+        }
+      });
+    }
+    if (e.btnToggleShadows) {
+      e.btnToggleShadows.addEventListener("click", () => {
+        const cfg = DataService.getConfig();
+        const cur = !(cfg.features && cfg.features.shadows3d === false);
+        DataService.setConfig({ features: { shadows3d: !cur } });
+        rebuildGameData();
+        if (typeof Renderer3D !== "undefined" && Renderer3D.renderer) {
+          Renderer3D.renderer.shadowMap.enabled = !cur;
+          Renderer3D._levelKey = null; // dựng lại địa hình để áp cờ đổ bóng mới
+        }
         this._refreshSettingsButtons();
       });
     }
@@ -332,6 +360,8 @@ const UI = {
     setBtn(this.els.btnToggleSfx, st.sfx !== false);
     const cfg = DataService.getConfig();
     setBtn(this.els.btnToggleDamageNumbers, !(cfg.features && cfg.features.showDamageNumbers === false));
+    setBtn(this.els.btnToggle3d, !(cfg.features && cfg.features.render3dEnabled === false));
+    setBtn(this.els.btnToggleShadows, !(cfg.features && cfg.features.shadows3d === false));
   },
 
   _refreshPauseButtons() {
@@ -663,6 +693,10 @@ const UI = {
     this._stopHudLoop();
     this.hideOverlay(this.els.overlayResult);
     this.hideOverlay(this.els.overlayPause);
+    // Dừng hẳn vòng lặp vẽ khi rời trận: tiết kiệm CPU/GPU khi đang ở menu
+    // và không giữ lại mô hình 3D của ván cũ.
+    Game.stopLoop();
+    if (typeof Renderer3D !== "undefined") Renderer3D.clearRun();
     this.showScreen("menu");
   },
 
@@ -882,7 +916,10 @@ const UI = {
 
   _handleCanvasClick(ev) {
     if (!Game.run || Game.run.status !== "playing") return;
-    const p = this._canvasPoint(ev);
+    let p = this._canvasPoint(ev);
+    // Ở chế độ 3D, điểm trên canvas phải được BẮN TIA xuống mặt đất để ra
+    // đúng toạ độ bản đồ (2D) mà toàn bộ logic game đang dùng.
+    if (typeof Renderer3D !== "undefined" && Renderer3D.active()) p = Renderer3D.pick(p.x, p.y);
     const spotIndex = Game.hitTestBuildSpot(p.x, p.y);
     if (spotIndex === -1) { this._hideTowerPicker(); return; }
     const occupied = Game.run.towers.some((t) => t.spotIndex === spotIndex);

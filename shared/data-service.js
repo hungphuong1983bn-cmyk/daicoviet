@@ -37,7 +37,7 @@ const DataService = (() => {
     adminLogs: "collection:adminLogs",
   };
 
-  const SCHEMA_VERSION = 9;
+  const SCHEMA_VERSION = 10;
 
   /* ---------------------------------------------------------
      DỮ LIỆU MẶC ĐỊNH (seed)
@@ -70,6 +70,11 @@ const DataService = (() => {
         showDamageNumbers: true,
         showEnemyHpBar: true,
         showFps: false,
+        // Giai đoạn 5: dựng hình 3D bằng WebGL (Three.js đóng gói sẵn trong
+        // vendor/three.min.js). Nếu máy/trình duyệt không hỗ trợ WebGL, engine
+        // TỰ ĐỘNG quay về chế độ vẽ 2D cũ nên game không bao giờ trắng màn.
+        render3dEnabled: true,
+        shadows3d: true,
       },
     };
   }
@@ -1918,6 +1923,24 @@ const DataService = (() => {
     setConfig(cfgPatch);
   }
 
+  /* Bổ sung cờ cấu hình Giai đoạn 5 (dựng hình 3D) cho dữ liệu cũ. */
+  function ensureGiaiDoan5Fields() {
+    const cfg = getConfig();
+    const feat = Object.assign({}, cfg.features);
+    if (feat.render3dEnabled === undefined) feat.render3dEnabled = true;
+    if (feat.shadows3d === undefined) feat.shadows3d = true;
+    setConfig({ features: feat });
+  }
+
+  /* Di trú schemaVersion 9 -> 10 (Giai đoạn 5: dựng hình 3D). */
+  function migrateSchemaV9ToV10() {
+    const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
+    if (currentVersion >= 10) return;
+    ensureGiaiDoan5Fields();
+    StorageService.set(KEYS.schemaVersion, 10);
+    console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 10 (Giai đoạn 5): bật chế độ dựng hình 3D WebGL, có fallback 2D.");
+  }
+
   /* Di trú schemaVersion 8 -> 9 (Giai đoạn 4: combat/tower/hero/map/audio). */
   function migrateSchemaV8ToV9() {
     const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
@@ -1944,6 +1967,7 @@ const DataService = (() => {
     migrateSchemaV6ToV7();
     migrateSchemaV7ToV8();
     migrateSchemaV8ToV9();
+    migrateSchemaV9ToV10();
     if (!StorageService.has(KEYS.schemaVersion)) {
       StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
     }
@@ -2101,6 +2125,7 @@ const DataService = (() => {
     ensureAchievementFields(); // vá Thành tích thật nếu snapshot import là bản backup cũ (v6)
     ensureExpandedCampaignContent(); // vá 2 màn/2 Boss/wave mới nếu snapshot import là bản backup cũ (v7)
     ensureGiaiDoan4Fields(); // vá toàn bộ field Giai đoạn 4 nếu snapshot import là bản backup cũ (v8)
+    ensureGiaiDoan5Fields(); // vá cờ 3D của Giai đoạn 5 (v9 -> v10)
     StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
   }
 

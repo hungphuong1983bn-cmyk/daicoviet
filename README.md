@@ -342,3 +342,83 @@ Bộ kiểm thử tự động (jsdom) chạy qua toàn bộ luồng: dựng `GA
 nhánh, đổi ưu tiên mục tiêu, bán tháp, chơi tới khi thắng, kiểm tra không
 còn enemy/projectile rác, lưu/tải ván đang chơi kèm version, và cả 5 phím
 tắt. Tất cả đều đạt, không có lỗi JavaScript.
+
+---
+
+## 12. Giai đoạn 5 – Dựng hình 3D (WebGL)
+
+Toàn bộ **phần hình ảnh** của game đã được nâng lên 3D bằng Three.js
+(`vendor/three.min.js`, đóng gói sẵn — **không cần mạng, không cần build**).
+
+### Nguyên tắc thiết kế
+
+`js/renderer3d.js` là một **lớp dựng hình thay thế**, không phải một game
+mới. Mọi logic (combat, wave, tháp, tướng, save, admin) vẫn chạy trên hệ
+toạ độ 2D cũ 960×540. Renderer3D chỉ *đọc* trạng thái và dựng cảnh:
+
+```
+điểm bản đồ (mx, my)  ->  thế giới 3D (mx - 480, 0, my - 270)
+```
+
+Nhờ vậy không một dòng logic va chạm, tầm bắn hay đường đi nào phải sửa.
+
+### Cách hai canvas phối hợp
+
+- `#game-canvas-3d` (WebGL) nằm **dưới**, vẽ toàn bộ thế giới.
+- `#game-canvas` (2D cũ) nằm **trên**, trong suốt — vẫn bắt sự kiện chuột
+  như trước và vẽ lớp phủ (số sát thương, thanh máu địch/thành, tia lửa,
+  vòng nổ) bằng cách **chiếu** toạ độ 3D về màn hình.
+- Cả hai cùng buffer 960×540 + `object-fit: contain` nên khớp nhau tuyệt
+  đối ở mọi kích thước màn hình, kể cả điện thoại.
+- Khi bấm chuột ở chế độ 3D, engine **bắn tia** (raycast) xuống mặt đất
+  `y = 0` để đổi điểm trên màn hình về đúng toạ độ bản đồ.
+
+### Có gì trong cảnh 3D
+
+- **Địa hình theo `theme`**: nền đất, dãy núi chân trời, sương mù xa, bầu
+  trời đổi màu theo từng màn (karst / citadel / river / mountain / field).
+- **Đường hành quân** dựng khối, bo tròn ở khúc cua, có cọc mốc hai bên.
+- **Chướng ngại vật 3D**: đá (khối 12 mặt), cây (thân + tán), vũng nước,
+  bãi cọc, tường, cờ trận.
+- **Toà thành**: tường, lỗ châu mai, mái cong hai tầng, cổng, 4 tháp canh,
+  và **vòm khiên** hiện lên khi dùng kỹ năng Hộ Quốc Trận.
+- **Tháp**: hình khối khác nhau theo vai trò (dps/aoe/control/magic/dot/
+  support), **nòng xoay theo mục tiêu đang bắn**, mỗi cấp thêm một vòng
+  vàng, tháp hỗ trợ có vòng hào quang quay đúng bằng tầm hiệu lực, tháp bị
+  Boss vô hiệu hoá thì chìm xuống và nhấp nháy.
+- **Quân địch**: mô hình theo kích thước/màu của từng loại, Boss to gấp
+  đôi, Elite phát sáng, quân **bay thật sự lơ lửng trên cao**, quân bị
+  choáng/trúng độc đổi màu, khiên hiện thành vòm xanh, có bước nhún khi đi.
+- **Tướng** đứng trấn giữ với áo choàng, mũ vàng và vòng hào quang bùng
+  sáng khi tung kỹ năng.
+- **Ánh sáng**: nắng chếch có **đổ bóng** (bật/tắt được), ánh sáng bầu
+  trời và ánh sáng nền.
+- **Rung màn hình** được chuyển thành **rung camera** thật.
+
+### An toàn & hiệu năng
+
+- Nếu không có WebGL (máy cũ, trình duyệt tắt WebGL, môi trường kiểm thử),
+  `Renderer3D.active()` trả về `false` và **game tự động vẽ 2D như cũ** —
+  không bao giờ trắng màn hình. Mọi lỗi phát sinh khi dựng hình cũng được
+  bắt và chuyển về 2D.
+- Mesh của địch/đạn dùng **pool tái sử dụng**, tự cắt bớt phần thừa; mesh
+  tháp bị huỷ và `dispose()` khi bán tháp; rời trận là dọn sạch.
+- Buffer cố định 960×540 (`setPixelRatio(1)`) giữ tải GPU ổn định.
+- Rời trận nay **dừng hẳn vòng lặp vẽ** (`Game.stopLoop()`), không còn
+  chạy nền khi đang ở menu.
+
+### Bật / tắt
+
+- Trong game: **Cài đặt → Đồ hoạ 3D** và **Bóng đổ 3D**.
+- Trong Admin: **Cấu hình game → Tính năng bật/tắt** (`render3dEnabled`,
+  `shadows3d`).
+- Dữ liệu di trú lên **`SCHEMA_VERSION = 10`**, tự vá cờ mới cho bản lưu cũ.
+
+### Đã kiểm thử
+
+Ngoài bộ kiểm thử cũ (chạy ở chế độ 2D dự phòng, vẫn đạt 100%), có thêm
+bộ kiểm thử riêng cho 3D dùng **Three.js thật** (chỉ giả lập đúng phần
+GPU): dựng địa hình, dựng thành, đủ bệ đặt tháp, **chiếu ↔ bắn tia khớp
+nhau với sai số 0.0000px**, bấm đúng ô đất, mỗi tháp một mô hình, vòng lặp
+dựng hình liên tục qua cả trận tới khi thắng, pool mesh không phình, dọn
+sạch khi rời trận, và tắt/bật lại được chế độ 3D.

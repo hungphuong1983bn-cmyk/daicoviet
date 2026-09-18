@@ -69,6 +69,7 @@
         <li>Coi chừng địch <strong>bay</strong> (đi tắt tới thành), <strong>hồi máu</strong> đồng đội, <strong>khiên chắn</strong>, <strong>tự hồi máu</strong> và <strong>tách đôi khi chết</strong>.</li>
         <li><strong>Trống đồng</strong> là tháp hỗ trợ: không bắn nhưng tăng sát thương/tốc bắn cho các tháp quanh nó.</li>
         <li>Dùng nút tốc độ <strong>x1 / x2 / x3</strong> để đẩy nhanh trận đánh.</li>
+        <li>Chiến trường được dựng <strong>3D</strong>: xoay nòng tháp, quân bay lượn trên cao, bóng đổ theo nắng. Có thể <strong>tắt 3D</strong> trong Cài đặt nếu máy yếu.</li>
         <li>Phím tắt: <strong>Space/Enter</strong> bắt đầu đợt · <strong>P</strong> tạm dừng · <strong>S</strong> kỹ năng · <strong>F</strong> tốc độ · <strong>Esc</strong> đóng bảng.</li>
       </ul>
       <p><strong>Sát thương &amp; kháng cự:</strong> đòn <em>vật lý</em> bị <strong>Giáp</strong> chặn bớt, đòn <em>phép</em> bị <strong>Kháng phép</strong> chặn bớt. Gặp địch giáp dày hãy dùng tháp phép (Đạo sĩ, Hoả tiễn) hoặc tháp xuyên giáp (Nỏ thần).</p>
@@ -114,6 +115,14 @@
     <div class="settings-row settings-slider-row">
       <span>Âm lượng SFX</span>
       <input type="range" id="range-sfx-volume" min="0" max="100" step="5" value="85">
+    </div>
+    <div class="settings-row">
+      <span>🧊 Đồ hoạ 3D (WebGL)</span>
+      <button class="btn btn-toggle" id="btn-toggle-3d">Bật</button>
+    </div>
+    <div class="settings-row">
+      <span>🌓 Bóng đổ 3D</span>
+      <button class="btn btn-toggle" id="btn-toggle-shadows">Bật</button>
     </div>
     <div class="settings-row">
       <span>💥 Số sát thương</span>
@@ -272,7 +281,9 @@
 <script src="js/data.js"></script>
 <script src="js/state.js"></script>
 <script src="js/entities.js"></script>
+<script src="vendor/three.min.js"></script>
 <script src="js/effect-manager.js"></script>
+<script src="js/renderer3d.js"></script>
 <script src="js/sound-manager.js"></script>
 <script src="js/game.js"></script>
 <script src="js/ui.js"></script>

@@ -667,6 +667,9 @@ class Tower {
     const fireRateMult = (buff && buff.fireRateMult) || 1;
     const damageMult = (buff && buff.damageMult) || 1;
     projectiles.push(new Projectile(this, target, damageMult));
+    // ghi lại hướng bắn để lớp dựng hình 3D xoay nòng tháp về phía mục tiêu
+    this._lastTargetX = target.x;
+    this._lastTargetY = target.y;
     this._recoil = 1;
     const rate = Math.max(0.05, this.effectiveFireRate() * fireRateMult);
     this.cooldown = 1 / rate;

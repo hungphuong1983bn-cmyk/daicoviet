@@ -56,6 +56,9 @@ const Game = {
   init(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
+    // Giai đoạn 5: thử bật lớp dựng hình 3D (WebGL). Nếu không được,
+    // `Renderer3D.active()` trả về false và toàn bộ phần vẽ 2D cũ chạy y nguyên.
+    if (typeof Renderer3D !== "undefined") Renderer3D.init(canvas);
     Enemy.onHit = (x, y, amount, isCritical, damageType) => {
       const cfg = GAME_DATA.config.features || {};
       if (!this.run) return;
@@ -969,6 +972,9 @@ const Game = {
   render() {
     const ctx = this.ctx;
     if (!ctx) return;
+    // Ưu tiên dựng hình 3D; hàm trả về false nếu chế độ 3D đang tắt hoặc
+    // máy không hỗ trợ WebGL -> rơi xuống đường vẽ 2D bên dưới.
+    if (typeof Renderer3D !== "undefined" && Renderer3D.render(this)) return;
     const w = GAME_DATA.config.canvasWidth;
     const h = GAME_DATA.config.canvasHeight;
     ctx.clearRect(0, 0, w, h);
