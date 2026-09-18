@@ -52,6 +52,10 @@ const UI = {
 
       questList: document.getElementById("quest-list"),
       btnQuestsBack: document.getElementById("btn-quests-back"),
+      btnMenuAchievements: document.getElementById("btn-menu-achievements"),
+      achievementList: document.getElementById("achievement-list"),
+      achievementsProgress: document.getElementById("achievements-progress"),
+      btnAchievementsBack: document.getElementById("btn-achievements-back"),
 
       hudGold: document.getElementById("hud-gold"),
       hudHp: document.getElementById("hud-hp"),
@@ -112,6 +116,8 @@ const UI = {
       this.showScreen("heroes");
     });
     e.btnMenuQuests.addEventListener("click", () => this.showScreen("quests"));
+    e.btnMenuAchievements.addEventListener("click", () => this.showScreen("achievements"));
+    e.btnAchievementsBack.addEventListener("click", () => this.showScreen("menu"));
     e.btnGuideBack.addEventListener("click", () => this.showScreen("menu"));
     e.btnSettingsBack.addEventListener("click", () => this.showScreen("menu"));
     e.btnLevelsBack.addEventListener("click", () => this.showScreen("menu"));
@@ -121,6 +127,8 @@ const UI = {
     e.btnToggleSound.addEventListener("click", () => {
       GameState.progress.settings.sound = !GameState.progress.settings.sound;
       GameState.saveProgress();
+      SoundManager.setEnabled(GameState.progress.settings.sound);
+      if (GameState.progress.settings.sound) SoundManager.play("button"); // phản hồi ngay khi vừa BẬT lại
       this._refreshSettingsButtons();
     });
     e.btnResetProgress.addEventListener("click", () => {
@@ -179,6 +187,12 @@ const UI = {
         this._hideTowerPicker();
       }
     });
+    // Nút đóng (✕) trên header của Tower Picker/Upgrade Panel - cần thiết
+    // nhất ở kiểu bottom sheet trên mobile, nơi bấm ra ngoài không phải
+    // lúc nào cũng dễ (mục XLIII).
+    e.towerPicker.addEventListener("click", (ev) => {
+      if (ev.target.closest('[data-act="close-picker"]')) this._hideTowerPicker();
+    });
   },
 
   /* ---------------- ĐIỀU HƯỚNG MÀN HÌNH ---------------- */
@@ -191,6 +205,7 @@ const UI = {
     if (name === "levels") this._renderLevelList();
     if (name === "heroes") this._renderHeroList();
     if (name === "quests") this._renderQuestList();
+    if (name === "achievements") this._renderAchievementList();
   },
 
   _refreshMenuButtons() {
@@ -380,9 +395,42 @@ const UI = {
     }
   },
 
+  _renderAchievementList() {
+    const achievements = AchievementService.listForPlayer();
+    const container = this.els.achievementList;
+    if (!container) return;
+    container.innerHTML = "";
+    const unlockedCount = achievements.filter((a) => a.unlocked).length;
+    if (this.els.achievementsProgress) {
+      this.els.achievementsProgress.textContent = `Đã đạt ${unlockedCount}/${achievements.length}`;
+    }
+    for (const a of achievements) {
+      const card = document.createElement("div");
+      card.className = "achievement-card" + (a.unlocked ? " unlocked" : " locked");
+      const dateStr = a.unlocked && a.unlockedAt ? new Date(a.unlockedAt).toLocaleDateString("vi-VN") : "";
+      card.innerHTML = `
+        <div class="achievement-icon">${a.unlocked ? (a.icon || "🏆") : "🔒"}</div>
+        <div class="achievement-info">
+          <div class="achievement-name">${a.name}</div>
+          <p class="achievement-desc">${a.description || ""}</p>
+          <div class="achievement-reward">
+            ${a.unlocked ? `<span class="achievement-status">✔ Đã đạt ${dateStr}</span>` : `Thưởng: ${(a.reward && a.reward.gold) || 0} 🪙 · ${(a.reward && a.reward.exp) || 0} EXP`}
+          </div>
+        </div>
+      `;
+      container.appendChild(card);
+    }
+  },
+
   onQuestsCompleted(quests) {
     if (!quests || !quests.length) return;
     for (const q of quests) this.showToast("Hoàn thành nhiệm vụ: " + q.name);
+  },
+
+  /* Thành tích (mục XXX) - mở khoá là có thưởng luôn, khác Quest. */
+  onAchievementsUnlocked(achievements) {
+    if (!achievements || !achievements.length) return;
+    for (const a of achievements) this.showToast(`🏆 Đã mở khoá: ${a.icon || ""} ${a.name}!`);
   },
 
   /* ---------------- TOAST ---------------- */
@@ -665,19 +713,47 @@ const UI = {
     }
   },
 
+  /* Định vị bộ chọn quân / bảng nâng cấp NGAY TRONG khung màn chơi, không
+     bao giờ để lọt ra ngoài viewport hay bị vỡ khung (mục XLIII).
+     Phải đo kích thước THẬT sau khi đã có nội dung (gọi hàm này SAU khi
+     dựng xong innerHTML), vì đo lúc còn "hidden" hoặc rỗng sẽ luôn ra 0x0
+     và làm phép kẹp mép vô nghĩa. */
   _positionPicker(clientX, clientY) {
     const picker = this.els.towerPicker;
     const stageRect = this.els.canvas.parentElement.getBoundingClientRect();
-    picker.style.left = (clientX - stageRect.left) + "px";
-    picker.style.top = (clientY - stageRect.top) + "px";
+    const margin = 8;
+
+    picker.style.transform = "none"; // JS tự tính left/top, không dựa vào transform cố định nữa
+    picker.classList.remove("hidden");
+    const w = picker.offsetWidth;
+    const h = picker.offsetHeight;
+
+    const tapX = clientX - stageRect.left;
+    const tapY = clientY - stageRect.top;
+
+    let left = tapX - w / 2;
+    let top = tapY - h - 14; // mặc định hiện phía TRÊN điểm chạm
+
+    if (top < margin) {
+      // Sát mép trên (build spot gần đỉnh màn hình) -> hiện phía DƯỚI thay vì bị cắt đầu.
+      top = tapY + 24;
+    }
+
+    left = Math.max(margin, Math.min(left, stageRect.width - w - margin));
+    top = Math.max(margin, Math.min(top, stageRect.height - h - margin));
+
+    picker.style.left = left + "px";
+    picker.style.top = top + "px";
   },
 
   _showTowerPicker(spotIndex, clientX, clientY) {
     this._pickerMode = "build";
     this.selectedSpot = spotIndex;
     const picker = this.els.towerPicker;
-    this._positionPicker(clientX, clientY);
-    picker.innerHTML = "";
+    picker.innerHTML = `
+      <div class="picker-header"><span>Chọn Tháp</span><button class="picker-close" data-act="close-picker">✕</button></div>
+      <div class="picker-grid"></div>`;
+    const grid = picker.querySelector(".picker-grid");
 
     for (const typeId in GAME_DATA.towerTypes) {
       const def = GAME_DATA.towerTypes[typeId];
@@ -686,7 +762,7 @@ const UI = {
       opt.className = "tower-option" + (canAfford ? "" : " disabled");
       opt.innerHTML = `<span class="t-icon">${def.icon}</span>
                         <span class="t-name">${def.name}</span>
-                        <span class="t-stats">DMG ${Math.round(def.damage)} · TẦM ${Math.round(def.range)} · TĐ ${def.fireRate}${def.criticalChance ? " · Chí mạng " + def.criticalChance + "%" : ""}</span>
+                        <span class="t-stats">DMG ${Math.round(def.damage)}<br>TẦM ${Math.round(def.range)} · TĐ ${def.fireRate}</span>
                         <span class="t-cost">${def.cost} 🪙</span>`;
       opt.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -694,9 +770,9 @@ const UI = {
         Game.buildTower(spotIndex, typeId);
         this._hideTowerPicker();
       });
-      picker.appendChild(opt);
+      grid.appendChild(opt);
     }
-    picker.classList.remove("hidden");
+    this._positionPicker(clientX, clientY);
   },
 
   _showUpgradePanel(spotIndex, clientX, clientY) {
@@ -705,8 +781,8 @@ const UI = {
     const tower = Game.run.towers.find(t => t.spotIndex === spotIndex);
     if (!tower) return;
     const picker = this.els.towerPicker;
-    this._positionPicker(clientX, clientY);
-    picker.innerHTML = "";
+    picker.innerHTML = `
+      <div class="picker-header"><span>Nâng cấp Tháp</span><button class="picker-close" data-act="close-picker">✕</button></div>`;
 
     const cost = tower.nextUpgradeCost();
     const info = document.createElement("div");
@@ -737,7 +813,7 @@ const UI = {
         this._hideTowerPicker();
       });
     }
-    picker.classList.remove("hidden");
+    this._positionPicker(clientX, clientY);
   },
 
   _hideTowerPicker() {

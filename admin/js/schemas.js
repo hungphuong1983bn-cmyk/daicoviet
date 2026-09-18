@@ -167,6 +167,23 @@ const ADMIN_SCHEMAS = {
     ],
   },
 
+  achievements: {
+    label: "Thành tích",
+    collection: "achievements",
+    columns: ["icon", "name", "enabled"],
+    fields: [
+      { key: "id", label: "ID", type: "text", required: true, immutable: true },
+      { key: "name", label: "Tên thành tích", type: "text", required: true },
+      { key: "icon", label: "Icon", type: "text" },
+      { key: "description", label: "Mô tả", type: "textarea" },
+      { key: "condition", label: "Điều kiện (JSON) — {type, count|stars|value}", type: "json", jsonDefault: {},
+        hint: "type hợp lệ: KILL_COUNT{count}, BOSS_KILL_COUNT{count}, COMBO{count}, STAGE_STARS{stars}, ALL_STAGES_CLEARED{}, NO_DAMAGE_STAGE_CLEARED{}, SCORE{value}, TOWER_MAX_LEVEL{}. Engine THẬT SỰ đánh giá điều kiện này, không phải chỉ hiển thị." },
+      { key: "reward", label: "Thưởng (JSON) — {gold, exp}", type: "json", jsonDefault: {},
+        hint: "Tự động cộng ngay khi mở khoá, không cần người chơi bấm nhận như Nhiệm vụ." },
+      { key: "enabled", label: "Kích hoạt", type: "checkbox" },
+    ],
+  },
+
   items: {
     label: "Vật phẩm",
     collection: "items",
@@ -222,7 +239,7 @@ const ADMIN_SCHEMAS = {
         { value: "tide", label: "🌊 Thuỷ triều (làm chậm/nhanh toàn bộ địch theo chu kỳ)" },
         { value: "ambush", label: "🗡️ Phục kích (dùng Delay ở từng nhóm quân trong Wave)" },
       ] },
-      { key: "starConditions", label: "Điều kiện 3 Sao (JSON) — {oneStar,twoStarCastleHpPercent,threeStarCastleHpPercent,threeStarScore}", type: "json",
+      { key: "starConditions", label: "Điều kiện 3 Sao (JSON) — {oneStar,twoStarCastleHpPercent,threeStarCastleHpPercent,threeStarScore}", type: "json", jsonDefault: {},
         hint: "2 sao khi %HP thành còn lại lúc thắng >= twoStarCastleHpPercent. 3 sao khi %HP >= threeStarCastleHpPercent HOẶC Score đạt threeStarScore. Engine THẬT SỰ tính đúng công thức này, không chỉ hiển thị." },
       { key: "unlockConditionType", label: "Điều kiện mở khoá", type: "select", options: [
         { value: "always", label: "Luôn mở (màn khởi đầu)" },

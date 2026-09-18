@@ -19,10 +19,37 @@
 const EffectManager = {
   _numbers: [],
   _sparks: [],
+  _shake: { magnitude: 0, timer: 0, duration: 0 },
 
   reset() {
     this._numbers = [];
     this._sparks = [];
+    this._shake = { magnitude: 0, timer: 0, duration: 0 };
+  },
+
+  /* Rung màn hình (mục XXXVI) - CHỈ dùng cho Máy bắn đá, Boss skill, Boss
+     chết, Victory. Biên độ giữ rất nhỏ (<= 6px) và thời lượng ngắn để
+     không gây khó chịu/say trên mobile, đúng yêu cầu "Shake rất nhẹ". */
+  shake(magnitude, duration) {
+    const mag = Math.min(magnitude || 3, 6); // chặn cứng biên độ tối đa
+    // không cộng dồn - lấy hiệu ứng mạnh hơn, tránh rung giật liên hồi
+    if (mag >= this._shake.magnitude) {
+      const dur = Math.min(duration || 0.25, 0.5);
+      this._shake.magnitude = mag;
+      this._shake.timer = dur;
+      this._shake.duration = dur; // giữ lại để chuẩn hoá độ tắt dần về 0..1
+    }
+  },
+
+  /* Trả về độ lệch camera hiện tại; game.js dùng ctx.translate() trước
+     khi vẽ và restore() sau khi vẽ. Độ lệch KHÔNG bao giờ vượt quá
+     `magnitude` px (tối đa 6px) - đã chuẩn hoá theo tỉ lệ thời gian còn
+     lại, đúng tinh thần "Shake rất nhẹ" của mục XXXVI. */
+  getShakeOffset() {
+    if (this._shake.timer <= 0) return { x: 0, y: 0 };
+    const decay = this._shake.timer / (this._shake.duration || 1); // 0..1
+    const m = this._shake.magnitude * decay;
+    return { x: (Math.random() * 2 - 1) * m, y: (Math.random() * 2 - 1) * m };
   },
 
   spawnDamageNumber(x, y, amount, isCritical) {
@@ -52,6 +79,10 @@ const EffectManager = {
   },
 
   update(dt) {
+    if (this._shake.timer > 0) {
+      this._shake.timer -= dt;
+      if (this._shake.timer <= 0) { this._shake.timer = 0; this._shake.magnitude = 0; this._shake.duration = 0; }
+    }
     for (const n of this._numbers) {
       n.age += dt;
       n.y -= dt * (n.isCritical ? 34 : 24);

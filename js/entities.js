@@ -294,6 +294,20 @@ class Enemy {
 
   draw(ctx, showHpBar) {
     const r = this.def.radius;
+    // Aura Boss (mục XXXIV): vòng hào quang mạch đập, đỏ rực khi Cuồng nộ.
+    // Dùng thời gian thực để mạch đập mượt mà không cần thêm state riêng.
+    if (this.isBoss) {
+      const enraged = this.currentPhase && this.currentPhase.enrage;
+      const pulse = 1 + Math.sin(Date.now() / (enraged ? 120 : 260)) * 0.14;
+      const auraR = (r + 10) * pulse;
+      const grad = ctx.createRadialGradient(this.x, this.y, r * 0.6, this.x, this.y, auraR);
+      grad.addColorStop(0, enraged ? "rgba(255,92,61,.42)" : "rgba(232,200,115,.28)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, auraR, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
     // vòng hào quang Elite (mục XII/XXIV "ELITE") - vẽ TRƯỚC thân để không che icon
     if (this.isElite) {
       ctx.beginPath();
@@ -495,6 +509,13 @@ class Projectile {
     const finalDamage = this.baseDamage * (isCritical ? this.criticalMultiplier : 1);
     const meta = { isCritical, armorPen: this.armorPenetration, sourceId: this.sourceId };
     if (this.splashRadius > 0) {
+      if (typeof SoundManager !== "undefined") SoundManager.play("explosion");
+      // Rung màn hình chỉ dành cho tháp bắn đá hạng nặng (mục XXXVI) -
+      // nhận diện bằng bán kính lan lớn, không hard-code id tháp (mục XLVI
+      // cấm hard-code gameplay theo id).
+      if (this.splashRadius >= 60 && typeof EffectManager !== "undefined") {
+        EffectManager.shake(2.5, 0.18);
+      }
       for (const e of enemies) {
         if (!e.alive) continue;
         const d = Math.hypot(e.x - target.x, e.y - target.y);

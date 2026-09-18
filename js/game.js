@@ -41,6 +41,13 @@ const Game = {
   ctx: null,
   levelDef: null,
 
+  /* Phát âm thanh an toàn: nếu js/sound-manager.js không tải được (lỗi
+     mạng, bị chặn, môi trường không có Web Audio) thì game vẫn chạy bình
+     thường, chỉ là im lặng - không bao giờ để âm thanh làm vỡ gameplay. */
+  _sfx(name) {
+    if (typeof SoundManager !== "undefined") SoundManager.play(name);
+  },
+
   /* trạng thái ván đấu hiện tại */
   run: null,
 
@@ -58,6 +65,9 @@ const Game = {
       if (isCritical) {
         this.run.critCount++;
         this.run.score += SCORE_RULES.CRIT_BONUS;
+        this._sfx("critical");
+      } else {
+        this._sfx("hit");
       }
       if (cfg.showDamageNumbers === false) return;
       EffectManager.spawnDamageNumber(x, y, amount, isCritical);
@@ -66,9 +76,13 @@ const Game = {
       if (!this.run) return;
       if (event.type === "phase_change") {
         EffectManager.spawnSpark(enemy.x, enemy.y, event.phase && event.phase.enrage ? "#ff5c3d" : "#e8c873", 14);
+        this._sfx("boss");
+        EffectManager.shake(3, 0.28);
         if (UI.onBossPhaseChanged) UI.onBossPhaseChanged(enemy, event.phase);
       } else if (event.type === "ability_used") {
         EffectManager.spawnSpark(enemy.x, enemy.y, "#e8c873", 10);
+        this._sfx("skill");
+        EffectManager.shake(2.5, 0.22);
         if (UI.onBossAbilityUsed) UI.onBossAbilityUsed(enemy, event.ability);
       }
     };
@@ -330,7 +344,11 @@ const Game = {
         r.heroExpGained += Math.round((e.def.rewardExp || 0) * mult);
         r.killCount++;
         GameState.recordKill(1);
-        if (e.isBoss) { r.bossKilledThisRun = true; r.bossKillCount++; }
+        if (e.isBoss) {
+          r.bossKilledThisRun = true; r.bossKillCount++; GameState.recordBossKill(1);
+          EffectManager.shake(5, 0.45);
+          EffectManager.spawnSpark(e.x, e.y, "#ff5c3d", 24);
+        }
         this._addKillScore(e);
       }
       // Boss Skill "Triệu Hồi": rút quân chờ sinh ra khỏi hàng đợi riêng của
@@ -378,6 +396,7 @@ const Game = {
       GameState.recordRunResult(false);
       this._grantHeroExp();
       const stats = this._finalizeScore(false);
+      this._sfx("defeat");
       UI.onGameEnded(false, stats);
       return;
     }
@@ -430,6 +449,9 @@ const Game = {
       if (r.bossKilledThisRun) bossQuests = QuestService.evaluate("BOSS_KILLED", {});
       UI.onQuestsCompleted([...stageQuests, ...bossQuests]);
       this._unlockNextStages(r.levelId);
+      this._checkStageEndAchievements(stats);
+      this._sfx("victory");
+      EffectManager.shake(3.5, 0.35);
       UI.onGameEnded(true, stats);
     } else {
       UI.onWaveCleared();
@@ -442,12 +464,21 @@ const Game = {
     const r = this.run;
     r.combo += 1;
     r.comboTimer = SCORE_RULES.COMBO_WINDOW;
+    const isNewComboRecord = r.combo > r.maxCombo;
     r.maxCombo = Math.max(r.maxCombo, r.combo);
     const comboStacks = Math.min(r.combo, SCORE_RULES.COMBO_SCORE_CAP_STACK);
     const killScore = SCORE_RULES.KILL_BASE + Math.round((e.def.reward || 0) * SCORE_RULES.KILL_REWARD_MULT);
     const comboScore = comboStacks * SCORE_RULES.COMBO_SCORE_PER_STACK;
     r.score += killScore + comboScore;
-    if (e.isBoss) r.score += SCORE_RULES.BOSS_KILL_BONUS;
+    if (e.isBoss) {
+      r.score += SCORE_RULES.BOSS_KILL_BONUS;
+      const unlocked = AchievementService.evaluate("BOSS_KILL_COUNT", {});
+      if (unlocked.length) UI.onAchievementsUnlocked(unlocked);
+    }
+    if (isNewComboRecord && r.maxCombo >= 20) {
+      const unlocked = AchievementService.evaluate("COMBO", { maxCombo: r.maxCombo });
+      if (unlocked.length) UI.onAchievementsUnlocked(unlocked);
+    }
   },
 
   /* Cộng Hero EXP thật đã tích luỹ trong trận (mục XIX) vào tiến trình
@@ -505,6 +536,24 @@ const Game = {
     };
   },
 
+  /* Kiểm tra các Thành tích chỉ có thể biết được KHI THẮNG 1 màn (mục
+     XXX): 3 sao, không mất HP thành, Score cao, và đã dọn sạch bản đồ. */
+  _checkStageEndAchievements(stats) {
+    const r = this.run;
+    let unlocked = [];
+    unlocked = unlocked.concat(AchievementService.evaluate("KILL_COUNT", {}));
+    unlocked = unlocked.concat(AchievementService.evaluate("STAGE_STARS", { stars: stats.stars }));
+    unlocked = unlocked.concat(AchievementService.evaluate("SCORE", { score: stats.score }));
+    if (r.noDamageTaken) unlocked = unlocked.concat(AchievementService.evaluate("NO_DAMAGE_STAGE_CLEARED", {}));
+
+    const enabledStages = DataService.list("stages").filter((s) => s.enabled !== false);
+    const player = GameState.getPlayer();
+    const clearedAll = enabledStages.every((s) => (player.stageStars || {})[s.id] >= 1);
+    if (clearedAll) unlocked = unlocked.concat(AchievementService.evaluate("ALL_STAGES_CLEARED", {}));
+
+    if (unlocked.length) UI.onAchievementsUnlocked(unlocked);
+  },
+
   _unlockNextStages(clearedStageId) {
     const stages = Object.values(GAME_DATA.levels);
     for (const s of stages) {
@@ -535,6 +584,7 @@ const Game = {
     r.spawnQueue = this._buildSpawnQueue(wave.groups);
     r.spawnTimer = 0;
     r.waveInProgress = true;
+    this._sfx("wave");
     this.persistRun();
   },
 
@@ -581,6 +631,7 @@ const Game = {
     tower.spotIndex = spotIndex;
     r.towers.push(tower);
     r.gold -= def.cost;
+    this._sfx("build");
     this.persistRun();
     return true;
   },
@@ -593,6 +644,11 @@ const Game = {
     if (cost === null || r.gold < cost) return false;
     tower.upgrade();
     r.gold -= cost;
+    this._sfx("upgrade");
+    if (tower.level >= tower.def.maxLevel) {
+      const unlocked = AchievementService.evaluate("TOWER_MAX_LEVEL", {});
+      if (unlocked.length) UI.onAchievementsUnlocked(unlocked);
+    }
     this.persistRun();
     return true;
   },
@@ -629,6 +685,7 @@ const Game = {
         return false;
     }
     r.skillCooldownRemaining = skill.cooldown;
+    this._sfx("skill");
     this.persistRun();
     return true;
   },
@@ -658,8 +715,16 @@ const Game = {
     const w = GAME_DATA.config.canvasWidth;
     const h = GAME_DATA.config.canvasHeight;
     ctx.clearRect(0, 0, w, h);
+
+    // Screen shake (mục XXXVI): dịch toàn bộ khung vẽ một chút rồi trả lại
+    // nguyên trạng ở cuối - dùng save/restore để không bao giờ để ma trận
+    // biến đổi rò rỉ sang khung hình sau.
+    const shake = EffectManager.getShakeOffset();
+    ctx.save();
+    if (shake.x || shake.y) ctx.translate(shake.x, shake.y);
+
     this._drawBackground(ctx, w, h);
-    if (!this.levelDef) return;
+    if (!this.levelDef) { ctx.restore(); return; }
     this._drawPath(ctx);
     this._drawBuildSpots(ctx);
     this._drawCastle(ctx);
@@ -672,7 +737,8 @@ const Game = {
       for (const p of this.run.projectiles) p.draw(ctx);
       EffectManager.draw(ctx);
     }
-    if (cfg.showFps) this._drawFps(ctx);
+    ctx.restore();
+    if (cfg.showFps) this._drawFps(ctx); // FPS vẽ NGOÀI shake để không bị rung theo
   },
 
   _drawFps(ctx) {

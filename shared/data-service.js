@@ -32,11 +32,12 @@ const DataService = (() => {
     quests: "collection:quests",
     items: "collection:items",
     rewards: "collection:rewards",
+    achievements: "collection:achievements",
     adminUsers: "collection:adminUsers",
     adminLogs: "collection:adminLogs",
   };
 
-  const SCHEMA_VERSION = 6;
+  const SCHEMA_VERSION = 7;
 
   /* ---------------------------------------------------------
      DỮ LIỆU MẶC ĐỊNH (seed)
@@ -764,6 +765,81 @@ const DataService = (() => {
     ];
   }
 
+  /* Thành tích (Giai đoạn 3, mục XXX): khác Quest ở chỗ KHÔNG cần "nhận
+     thưởng" thủ công - mở khoá là có thưởng luôn, và có màn hình riêng
+     🏆 để xem lại toàn bộ huy hiệu đã đạt. condition dùng lại đúng các
+     eventType mà game.js đã bắn ra (KILL_COUNT/BOSS_KILL_COUNT/COMBO/
+     STAGE_STARS/SCORE/ALL_STAGES_CLEARED/NO_DAMAGE_STAGE_CLEARED/
+     TOWER_MAX_LEVEL), được AchievementService (shared/achievement-
+     service.js) đánh giá thật, không chỉ hiển thị cho có. */
+  function defaultAchievements() {
+    return [
+      {
+        id: "a_kill100", name: "Sát Thù Trăm Trận", icon: "💀",
+        description: "Tiêu diệt tổng cộng 100 quân địch.",
+        condition: { type: "KILL_COUNT", count: 100 },
+        reward: { gold: 80, exp: 40 },
+        enabled: true,
+      },
+      {
+        id: "a_boss1", name: "Diệt Trừ Hoạ Lớn", icon: "👹",
+        description: "Tiêu diệt 1 Boss bất kỳ.",
+        condition: { type: "BOSS_KILL_COUNT", count: 1 },
+        reward: { gold: 60, exp: 30 },
+        enabled: true,
+      },
+      {
+        id: "a_boss10", name: "Khắc Tinh Của Boss", icon: "🏆",
+        description: "Tiêu diệt tổng cộng 10 Boss.",
+        condition: { type: "BOSS_KILL_COUNT", count: 10 },
+        reward: { gold: 300, exp: 150 },
+        enabled: true,
+      },
+      {
+        id: "a_combo20", name: "Vũ Bão", icon: "🔥",
+        description: "Đạt Combo x20 trong 1 trận.",
+        condition: { type: "COMBO", count: 20 },
+        reward: { gold: 100, exp: 50 },
+        enabled: true,
+      },
+      {
+        id: "a_3stars", name: "Hoàn Hảo", icon: "⭐",
+        description: "Đạt 3 sao ở bất kỳ màn nào.",
+        condition: { type: "STAGE_STARS", stars: 3 },
+        reward: { gold: 120, exp: 60 },
+        enabled: true,
+      },
+      {
+        id: "a_all_stages", name: "Thống Nhất Giang Sơn", icon: "🗺️",
+        description: "Hoàn thành tất cả các màn.",
+        condition: { type: "ALL_STAGES_CLEARED" },
+        reward: { gold: 500, exp: 250 },
+        enabled: true,
+      },
+      {
+        id: "a_no_damage", name: "Thành Trì Bất Khả Xâm Phạm", icon: "🏯",
+        description: "Hoàn thành 1 màn mà thành không mất một chút HP nào.",
+        condition: { type: "NO_DAMAGE_STAGE_CLEARED" },
+        reward: { gold: 150, exp: 80 },
+        enabled: true,
+      },
+      {
+        id: "a_score10000", name: "Kỳ Tích Một Trận", icon: "🎯",
+        description: "Đạt Score từ 10.000 trở lên trong 1 trận.",
+        condition: { type: "SCORE", value: 10000 },
+        reward: { gold: 200, exp: 100 },
+        enabled: true,
+      },
+      {
+        id: "a_tower_max", name: "Đỉnh Cao Công Nghệ", icon: "⬆️",
+        description: "Nâng cấp 1 Tower lên Level tối đa.",
+        condition: { type: "TOWER_MAX_LEVEL" },
+        reward: { gold: 90, exp: 45 },
+        enabled: true,
+      },
+    ];
+  }
+
   function defaultItems() {
     return [
       {
@@ -799,6 +875,7 @@ const DataService = (() => {
         stageStars: {},   // { stageId: 1|2|3 } - Giai đoạn 3, mục V
         bestScore: {},    // { stageId: number } - mục XXV
         bestTime: {},     // { stageId: giây } - mục XXV, chỉ cập nhật khi THẮNG
+        achievements: {}, // { achievementId: true } - mục XXX
         heroesOwned: ["dinh_bo_linh"],
         heroLevels: { dinh_bo_linh: 1 },
         heroExp: { dinh_bo_linh: 0 }, // EXP riêng của từng tướng (Giai đoạn 3), TÁCH BIỆT với exp người chơi ở trên
@@ -833,6 +910,7 @@ const DataService = (() => {
       quests: defaultQuests(),
       items: defaultItems(),
       rewards: defaultRewards(),
+      achievements: defaultAchievements(),
       adminUsers: defaultAdminUsers(),
       adminLogs: [],
     };
@@ -1012,6 +1090,29 @@ const DataService = (() => {
     console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 6: thêm Score/Combo/3-Sao thật (player.stageStars/bestScore/bestTime, stages.starConditions/targetTime).");
   }
 
+  /* Đảm bảo Thành tích (Giai đoạn 3, mục XXX) có đủ field: collection
+     "achievements" (nếu chưa từng tồn tại - vd. cài từ bản v6 trở về
+     trước) và player.achievements{}. */
+  function ensureAchievementFields() {
+    if (!StorageService.has(KEYS.achievements)) {
+      StorageService.set(KEYS.achievements, defaultAchievements());
+    }
+    const players = list("players").map((p) => {
+      if (p.achievements !== undefined) return p;
+      return Object.assign({}, p, { achievements: {} });
+    });
+    StorageService.set(KEYS.players, players);
+  }
+
+  /* Di trú schemaVersion 6 -> 7 (Giai đoạn 3 - Thành tích thật). */
+  function migrateSchemaV6ToV7() {
+    const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
+    if (currentVersion >= 7) return;
+    ensureAchievementFields();
+    StorageService.set(KEYS.schemaVersion, 7);
+    console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 7: thêm hệ thống Thành tích thật (collection achievements, player.achievements).");
+  }
+
   function ensureSeeded() {
     const defaults = defaultAll();
     Object.keys(KEYS).forEach((name) => {
@@ -1026,6 +1127,7 @@ const DataService = (() => {
     migrateSchemaV3ToV4();
     migrateSchemaV4ToV5();
     migrateSchemaV5ToV6();
+    migrateSchemaV6ToV7();
     if (!StorageService.has(KEYS.schemaVersion)) {
       StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
     }
@@ -1180,6 +1282,7 @@ const DataService = (() => {
     ensureBossEngineFields(); // vá Boss Phase Engine + Skill thật nếu snapshot import là bản backup cũ (v3)
     ensureHeroProgressionFields(); // vá Hero EXP/Level thật nếu snapshot import là bản backup cũ (v4)
     ensureScoreProgressionFields(); // vá Score/Combo/3-Sao thật nếu snapshot import là bản backup cũ (v5)
+    ensureAchievementFields(); // vá Thành tích thật nếu snapshot import là bản backup cũ (v6)
     StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
   }
 
@@ -1269,6 +1372,7 @@ const DataService = (() => {
       quests: toKeyedObject(list("quests")),
       items: toKeyedObject(list("items")),
       rewards: toKeyedObject(list("rewards")),
+      achievements: toKeyedObject(list("achievements")),
       levels,
     };
   }

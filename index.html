@@ -40,6 +40,7 @@
       <button class="btn" id="btn-continue">Tiếp tục</button>
       <button class="btn" id="btn-menu-heroes">Tướng</button>
       <button class="btn" id="btn-menu-quests">Nhiệm vụ</button>
+      <button class="btn" id="btn-menu-achievements">🏆 Thành tích</button>
       <button class="btn" id="btn-guide">Hướng dẫn</button>
       <button class="btn" id="btn-settings">Cài đặt</button>
     </nav>
@@ -117,6 +118,16 @@
   </div>
 </section>
 
+<!-- ================= MÀN HÌNH THÀNH TÍCH ================= -->
+<section id="screen-achievements" class="screen">
+  <div class="menu-panel wide">
+    <h2 class="panel-title">🏆 Thành tích</h2>
+    <p class="panel-sub" id="achievements-progress"></p>
+    <div class="achievement-list" id="achievement-list"></div>
+    <button class="btn btn-primary" id="btn-achievements-back">Quay lại</button>
+  </div>
+</section>
+
 <!-- ================= MÀN HÌNH CHƠI ================= -->
 <section id="screen-game" class="screen">
   <div class="hud">
@@ -185,10 +196,12 @@
 <script src="shared/crypto-util.js"></script>
 <script src="shared/data-service.js"></script>
 <script src="shared/quest-service.js"></script>
+<script src="shared/achievement-service.js"></script>
 <script src="js/data.js"></script>
 <script src="js/state.js"></script>
 <script src="js/entities.js"></script>
 <script src="js/effect-manager.js"></script>
+<script src="js/sound-manager.js"></script>
 <script src="js/game.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>

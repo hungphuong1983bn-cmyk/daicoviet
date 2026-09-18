@@ -311,17 +311,37 @@ html,body{
   border:2px solid var(--vang-dong);
   border-radius:10px;
   padding:10px;
-  display:flex;gap:8px;flex-wrap:wrap;max-width:min(320px,80vw);
+  display:flex;flex-direction:column;
+  width:min(300px,86vw);
+  max-height:min(72vh,420px);
+  overflow-y:auto;
   z-index:20;
   box-shadow:0 10px 24px var(--shadow);
-  transform:translate(-50%,-110%);
+  /* Vị trí thật do JS (_positionPicker) tính và kẹp trong khung màn chơi
+     (mục XLIII) - không dùng transform cố định nữa vì nó không biết mép
+     màn hình ở đâu và từng làm bộ chọn bị cắt/vỡ khung trên mobile. */
 }
 .tower-picker.hidden{display:none;}
+.picker-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding-bottom:6px;margin-bottom:6px;flex-shrink:0;
+  border-bottom:1px solid rgba(201,162,74,.3);
+  font-size:12px;color:var(--vang-sang);font-weight:700;
+}
+.picker-close{
+  background:none;border:none;color:var(--giay-do-dim);font-size:16px;
+  cursor:pointer;line-height:1;padding:2px 4px;
+}
+.picker-grid{
+  display:flex;flex-wrap:wrap;gap:8px;justify-content:center;
+  overflow-y:auto;overflow-x:hidden;
+}
 .tower-option{
   display:flex;flex-direction:column;align-items:center;
-  gap:4px;padding:8px 10px;border-radius:8px;
+  gap:4px;padding:8px 8px;border-radius:8px;
   border:1px solid rgba(201,162,74,.4);
-  background:rgba(0,0,0,.2);cursor:pointer;font-size:12px;min-width:64px;
+  background:rgba(0,0,0,.2);cursor:pointer;font-size:12px;
+  width:80px;box-sizing:border-box;flex:0 0 auto;
   transition:transform .15s ease, background .15s ease, border-color .15s ease;
 }
 .tower-option:hover:not(.disabled){
@@ -329,10 +349,34 @@ html,body{
   transform:translateY(-2px) scale(1.04);
   border-color:var(--vang-sang);
 }
-.tower-option .t-icon{font-size:22px;}
-.tower-option .t-stats{font-size:9px;color:#c9b385;white-space:nowrap;}
-.tower-option .t-cost{color:var(--vang-sang);}
+.tower-option .t-icon{font-size:20px;}
+.tower-option .t-name{font-size:11px;text-align:center;line-height:1.2;}
+.tower-option .t-stats{
+  font-size:9px;color:#c9b385;text-align:center;line-height:1.35;
+  white-space:normal;word-break:break-word;
+}
+.tower-option .t-cost{color:var(--vang-sang);font-size:11px;}
 .tower-option.disabled{opacity:.4;cursor:not-allowed;}
+
+/* Trên màn hình hẹp: bỏ hẳn kiểu "popup nổi cạnh ngón tay" (vốn luôn
+   thiếu chỗ khi có 9 loại tháp) và dùng BOTTOM SHEET toàn chiều rộng,
+   kiểu app di động - đảm bảo luôn đủ chỗ hiển thị hết mọi loại tháp,
+   có cuộn rõ ràng, không phụ thuộc vị trí ngón tay chạm (mục XLIII). */
+@media (max-width:640px){
+  .tower-picker{
+    position:fixed !important;
+    left:0 !important;right:0 !important;bottom:0 !important;top:auto !important;
+    width:100% !important;max-width:100%;
+    max-height:65vh;
+    border-radius:16px 16px 0 0;
+    border-width:2px 0 0 0;
+    padding:10px 12px calc(14px + env(safe-area-inset-bottom,0px));
+  }
+  .picker-grid{justify-content:space-evenly;}
+  .tower-option{width:26vw;min-width:70px;max-width:96px;padding:6px 4px;font-size:11px;}
+  .tower-option .t-icon{font-size:18px;}
+  .tower-option .t-stats{font-size:8px;}
+}
 
 /* ---------- Overlay ---------- */
 .overlay{
@@ -437,10 +481,28 @@ html,body{
 .quest-action{margin-top:8px;}
 .quest-status{font-size:12px;color:#c9b385;}
 
+.achievement-list{display:flex;flex-direction:column;gap:10px;max-height:56vh;overflow-y:auto;margin-bottom:16px;text-align:left;}
+.achievement-card{
+  display:flex;align-items:flex-start;gap:12px;
+  border:1.5px solid rgba(201,162,74,.35);border-radius:10px;padding:10px 14px;
+  background:rgba(0,0,0,.18);
+  transition:transform .18s ease, box-shadow .2s ease, border-color .2s ease;
+  animation:cardIn .3s ease both;
+}
+.achievement-card:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgba(0,0,0,.3);}
+.achievement-card.locked{opacity:.55;}
+.achievement-card.unlocked{border-color:#e8c873;box-shadow:0 0 0 1px rgba(232,200,115,.35), 0 6px 16px rgba(232,200,115,.15);}
+.achievement-icon{font-size:28px;line-height:1;flex-shrink:0;width:36px;text-align:center;}
+.achievement-info{flex:1;}
+.achievement-name{font-weight:700;color:var(--vang-sang);font-size:14px;}
+.achievement-desc{font-size:12px;margin:4px 0;color:var(--giay-do-dim);}
+.achievement-reward{font-size:12px;color:#c9b385;}
+.achievement-status{color:#7bc96f;}
+
 /* ---------- Bảng nâng cấp tháp ---------- */
-.upgrade-panel{display:flex;flex-direction:column;gap:6px;padding:4px 6px;min-width:150px;}
+.upgrade-panel{display:flex;flex-direction:column;gap:6px;padding:4px 6px;width:min(190px,72vw);box-sizing:border-box;}
 .upgrade-panel .t-name{font-weight:700;color:var(--vang-sang);font-size:13px;}
-.upgrade-stats{font-size:11px;color:#c9b385;}
+.upgrade-stats{font-size:11px;color:#c9b385;word-break:break-word;}
 .upgrade-maxed{font-size:12px;color:#7bc96f;}
 
 /* ---------- Toast ---------- */

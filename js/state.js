@@ -153,15 +153,25 @@ const GameState = {
   recordKill(count = 1) {
     const player = this.getPlayer();
     if (!player) return;
-    const stats = Object.assign({ totalKills: 0, totalRuns: 0, wins: 0, losses: 0 }, player.stats);
+    const stats = Object.assign({ totalKills: 0, totalRuns: 0, wins: 0, losses: 0, totalBossKills: 0 }, player.stats);
     stats.totalKills += count;
+    DataService.update("players", player.id, { stats });
+  },
+
+  /* Đếm dồn số Boss đã hạ TRỌN ĐỜI (khác r.bossKillCount trong game.js chỉ
+     đếm trong 1 trận) - dùng cho Thành tích "Khắc Tinh Của Boss" (mục XXX). */
+  recordBossKill(count = 1) {
+    const player = this.getPlayer();
+    if (!player) return;
+    const stats = Object.assign({ totalKills: 0, totalRuns: 0, wins: 0, losses: 0, totalBossKills: 0 }, player.stats);
+    stats.totalBossKills += count;
     DataService.update("players", player.id, { stats });
   },
 
   recordRunResult(won) {
     const player = this.getPlayer();
     if (!player) return;
-    const stats = Object.assign({ totalKills: 0, totalRuns: 0, wins: 0, losses: 0 }, player.stats);
+    const stats = Object.assign({ totalKills: 0, totalRuns: 0, wins: 0, losses: 0, totalBossKills: 0 }, player.stats);
     stats.totalRuns += 1;
     if (won) stats.wins += 1; else stats.losses += 1;
     DataService.update("players", player.id, { stats });

@@ -30,7 +30,7 @@ const AuthService = (() => {
     SUPER_ADMIN: ["*"],
     ADMIN: [
       "dashboard", "players", "heroes", "buildings", "enemies", "bosses",
-      "stages", "waves", "skills", "quests", "items", "rewards",
+      "stages", "waves", "skills", "quests", "items", "rewards", "achievements",
       "economy", "config", "backup", "logs",
     ],
     EDITOR: ["dashboard", "heroes", "enemies", "bosses", "stages", "waves"],

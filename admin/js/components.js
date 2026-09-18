@@ -100,7 +100,7 @@ const Components = (() => {
         <textarea class="form-input" id="${id}" name="${field.key}" rows="2">${escapeHtml(val)}</textarea>`;
     }
     if (field.type === "json") {
-      const pretty = typeof val === "string" ? val : JSON.stringify(val ?? [], null, 2);
+      const pretty = typeof val === "string" ? val : JSON.stringify(val ?? (field.jsonDefault || []), null, 2);
       return `<label class="form-label" for="${id}">${field.label}</label>
         <textarea class="form-input form-input-mono" id="${id}" name="${field.key}" rows="6">${escapeHtml(pretty)}</textarea>
         ${field.hint ? `<p class="field-hint">${field.hint}</p>` : ""}`;
@@ -153,7 +153,13 @@ const Components = (() => {
         if (raw === undefined || raw === null || raw === "") continue;
         try {
           const parsed = JSON.parse(raw);
-          if (!Array.isArray(parsed)) return `"${f.label}" phải là một mảng JSON (vd. [ {...} ]).`;
+          // Chấp nhận cả mảng JSON (vd. phases/abilities) LẪN object JSON
+          // (vd. starConditions, achievement condition/reward) - chỉ từ
+          // chối kiểu nguyên thuỷ (string/number/null) vì đó chắc chắn là
+          // dữ liệu nhập sai, không phải cấu trúc field này cần.
+          if (typeof parsed !== "object" || parsed === null) {
+            return `"${f.label}" phải là JSON dạng mảng [ {...} ] hoặc object { ... }.`;
+          }
           values[f.key] = parsed; // ghi đè lại bằng giá trị đã parse để lưu đúng kiểu
         } catch (err) {
           return `"${f.label}" không phải JSON hợp lệ: ${err.message}`;
