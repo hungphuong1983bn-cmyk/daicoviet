@@ -67,6 +67,7 @@ const UI = {
       heroList: $("hero-list"),
       heroGold: $("hero-gold"),
       heroExp: $("hero-exp"),
+      stageBrief: $("stage-brief"),
       btnHeroesBack: $("btn-heroes-back"),
       btnHeroesStart: $("btn-heroes-start"),
 
@@ -588,8 +589,53 @@ const UI = {
   },
 
   /* ---------------- TƯỚNG ---------------- */
+  /* ---------------- BRIEFING MÀN CHƠI (mục XII: xem thông tin Level +
+     Enemy dự kiến trước khi chọn Tướng và vào trận) ----------------
+     Chỉ hiện khi đang chọn Tướng CHO một màn cụ thể (_pendingStageId),
+     ẩn đi khi vào "Tướng chỉ huy" từ menu chính để quản lý chung. */
+  _renderStageBrief() {
+    const wrap = this.els.stageBrief;
+    if (!wrap) return;
+    const stageId = this._pendingStageId;
+    const stage = stageId ? GAME_DATA.levels[stageId] : null;
+    if (!stage) { wrap.classList.add("hidden"); wrap.innerHTML = ""; return; }
+
+    const waves = stage.waves || [];
+    const tally = {};
+    const bossIds = new Set();
+    for (const w of waves) {
+      for (const g of w.groups || []) {
+        if (g.boss) { bossIds.add(g.boss); continue; }
+        if (!g.type) continue;
+        tally[g.type] = (tally[g.type] || 0) + (g.count || 0);
+      }
+    }
+    const enemyRows = Object.keys(tally)
+      .sort((a, b) => tally[b] - tally[a])
+      .map((id) => {
+        const def = GAME_DATA.enemyTypes[id];
+        return def ? `<span class="brief-enemy" data-tip="${def.description || ""}">${def.icon || "🛡"} ${def.name} ×${tally[id]}</span>` : "";
+      }).join("");
+    const bossRows = [...bossIds]
+      .map((id) => {
+        const def = GAME_DATA.enemyTypes[id];
+        return def ? `<span class="brief-enemy brief-boss">${def.icon || "👹"} ${def.name}</span>` : "";
+      }).join("");
+
+    wrap.classList.remove("hidden");
+    wrap.innerHTML = `
+      <div class="brief-title">🗺️ ${stage.name}</div>
+      <div class="brief-meta">⚔️ ${waves.length} đợt · 🎁 ${stage.rewardGold || 0} 🪙 · ${stage.rewardExp || 0} EXP${stage.targetTime ? ` · ⏱ 3★ trong ${stage.targetTime}s` : ""}</div>
+      ${bossRows ? `<div class="brief-row"><span class="brief-label">👹 Boss:</span>${bossRows}</div>` : ""}
+      ${enemyRows
+        ? `<div class="brief-row"><span class="brief-label">Quân địch dự kiến:</span>${enemyRows}</div>`
+        : `<div class="brief-row brief-empty">Chưa rõ thành phần quân địch.</div>`}
+    `;
+  },
+
   _renderHeroList() {
     rebuildGameData();
+    this._renderStageBrief();
     const player = GameState.getPlayer();
     this.els.heroGold.textContent = player.gold;
     this.els.heroExp.textContent = player.exp;
@@ -1145,23 +1191,40 @@ const UI = {
     return `${meta.icon} ${meta.name} ${val} · ${eff.duration}s`;
   },
 
-  /* ---------------- BẢNG CHỌN THÁP ---------------- */
+  /* ---------------- BẢNG CHỌN VŨ KHÍ (chọn -> xem trước -> xác nhận) ----------------
+     Flow: chạm Build Point trống -> hiện lưới vũ khí (chưa xây) -> chạm một vũ khí
+     để CHỌN nó (hiện vòng tầm bắn xem trước trên chiến trường, KHÔNG trừ vàng) ->
+     chạm lại một vũ khí khác để đổi lựa chọn -> bấm "XÁC NHẬN TRIỂN KHAI" mới thực
+     sự xây & trừ vàng, hoặc "HỦY" / đóng bảng để bỏ chọn mà không mất gì. */
   _showTowerPicker(spotIndex, clientX, clientY) {
     this._pickerMode = "build";
     this.selectedSpot = spotIndex;
+    this._pendingTypeId = null;
     Game.selectedSpotIndex = -1;
+    Game.clearPreviewSpot();
+    this._tapAnchor = { x: clientX, y: clientY };
+    this._renderTowerPicker();
+    this._positionPicker(clientX, clientY);
+  },
+
+  _renderTowerPicker() {
+    const spotIndex = this.selectedSpot;
     const picker = this.els.towerPicker;
     picker.innerHTML = `
-      <div class="picker-header"><span>Chọn Tháp · 🪙 ${Game.run.gold}</span><button class="picker-close" data-act="close-picker">✕</button></div>
-      <div class="picker-grid"></div>`;
+      <div class="picker-header"><span>Chọn Vũ Khí · 🪙 ${Game.run.gold}</span><button class="picker-close" data-act="close-picker">✕</button></div>
+      <div class="picker-grid"></div>
+      <div class="picker-confirm-bar hidden"></div>`;
     const grid = picker.querySelector(".picker-grid");
+    const confirmBar = picker.querySelector(".picker-confirm-bar");
 
     for (const typeId in GAME_DATA.towerTypes) {
       const def = GAME_DATA.towerTypes[typeId];
       const canAfford = Game.run.gold >= def.cost;
       const dps = def.isSupport ? 0 : Math.round(def.damage * def.fireRate);
       const opt = document.createElement("div");
-      opt.className = "tower-option" + (canAfford ? "" : " disabled");
+      opt.className = "tower-option"
+        + (canAfford ? "" : " disabled")
+        + (this._pendingTypeId === typeId ? " selected" : "");
       opt.setAttribute("data-tip", `${def.description || ""}`);
       opt.innerHTML = `<span class="t-icon">${def.icon}</span>
                         <span class="t-name">${def.name}</span>
@@ -1173,12 +1236,40 @@ const UI = {
       opt.addEventListener("click", (evt) => {
         evt.stopPropagation();
         if (!canAfford) { this.showToast("Không đủ vàng!"); return; }
-        Game.buildTower(spotIndex, typeId);
-        this._hideTowerPicker();
+        // Chạm lại vũ khí đang chọn -> bỏ chọn. Chạm vũ khí khác -> đổi xem trước.
+        this._pendingTypeId = this._pendingTypeId === typeId ? null : typeId;
+        if (this._pendingTypeId) Game.setPreviewSpot(spotIndex, this._pendingTypeId);
+        else Game.clearPreviewSpot();
+        this._renderTowerPicker();
+        if (this._tapAnchor) this._positionPicker(this._tapAnchor.x, this._tapAnchor.y);
       });
       grid.appendChild(opt);
     }
-    this._positionPicker(clientX, clientY);
+
+    if (this._pendingTypeId) {
+      const def = GAME_DATA.towerTypes[this._pendingTypeId];
+      confirmBar.classList.remove("hidden");
+      confirmBar.innerHTML = `
+        <div class="confirm-summary">${def.icon} <b>${def.name}</b> · Tầm ${Math.round(def.range)} · ${def.cost} 🪙</div>
+        <div class="confirm-buttons">
+          <button class="btn btn-small btn-outline" data-act="cancel-build">HỦY</button>
+          <button class="btn btn-small btn-primary" data-act="confirm-build">✅ XÁC NHẬN TRIỂN KHAI</button>
+        </div>`;
+      confirmBar.querySelector('[data-act="confirm-build"]').addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        const ok = Game.buildTower(spotIndex, this._pendingTypeId);
+        if (!ok) this.showToast("Không đủ vàng!");
+        Game.clearPreviewSpot();
+        this._hideTowerPicker();
+      });
+      confirmBar.querySelector('[data-act="cancel-build"]').addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        this._pendingTypeId = null;
+        Game.clearPreviewSpot();
+        this._renderTowerPicker();
+        if (this._tapAnchor) this._positionPicker(this._tapAnchor.x, this._tapAnchor.y);
+      });
+    }
   },
 
   /* ---------------- BẢNG THÔNG TIN / NÂNG CẤP THÁP ---------------- */
@@ -1560,6 +1651,8 @@ const UI = {
   _hideTowerPicker() {
     this.els.towerPicker.classList.add("hidden");
     this.selectedSpot = -1;
+    this._pendingTypeId = null;
     Game.selectedSpotIndex = -1;
+    Game.clearPreviewSpot();
   },
 };

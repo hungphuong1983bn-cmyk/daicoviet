@@ -36,6 +36,8 @@ const Renderer3D = {
   _projPool: [],
   _spotPads: [],
   _rangeRing: null,
+  _previewRing: null,
+  _previewDisc: null,
   _castle: null,
   _castleShield: null,
   _hero: null,
@@ -205,6 +207,8 @@ const Renderer3D = {
     this._castle = null;
     this._castleShield = null;
     this._rangeRing = null;
+    this._previewRing = null;
+    this._previewDisc = null;
 
     const pal = this._palette(levelDef.theme || "karst");
     this.scene.background = new THREE.Color(pal.sky);
@@ -747,6 +751,34 @@ const Renderer3D = {
       this._rangeRing.visible = false;
     }
 
+    // --- vòng tầm bắn XEM TRƯỚC khi đang chọn vũ khí (chưa xác nhận) ---
+    const pv = game.previewSpot;
+    if (pv) {
+      if (!this._previewRing) {
+        this._previewRing = new THREE.Mesh(
+          new THREE.TorusGeometry(1, 1.2, 6, 48),
+          new THREE.MeshLambertMaterial({ color: 0x78c8f0, transparent: true, opacity: 0.65 })
+        );
+        this._previewRing.rotation.x = -Math.PI / 2;
+        this._dynGroup.add(this._previewRing);
+        this._previewDisc = new THREE.Mesh(
+          new THREE.CircleGeometry(1, 40),
+          new THREE.MeshBasicMaterial({ color: 0x78c8f0, transparent: true, opacity: 0.14, side: THREE.DoubleSide })
+        );
+        this._previewDisc.rotation.x = -Math.PI / 2;
+        this._dynGroup.add(this._previewDisc);
+      }
+      this._previewRing.visible = true;
+      this._previewDisc.visible = true;
+      this._previewRing.position.set(this._wx(pv.x), 3, this._wz(pv.y));
+      this._previewRing.scale.set(pv.range, pv.range, 1);
+      this._previewDisc.position.set(this._wx(pv.x), 2, this._wz(pv.y));
+      this._previewDisc.scale.set(pv.range, pv.range, 1);
+    } else {
+      if (this._previewRing) this._previewRing.visible = false;
+      if (this._previewDisc) this._previewDisc.visible = false;
+    }
+
     // --- quân địch (dùng pool, không cấp phát mới mỗi khung hình) ---
     const enemies = run ? run.enemies : [];
     for (let i = 0; i < enemies.length; i++) {
@@ -993,5 +1025,7 @@ const Renderer3D = {
     for (const m of this._projPool) m.visible = false;
     if (this._hero) this._hero.visible = false;
     if (this._rangeRing) this._rangeRing.visible = false;
+    if (this._previewRing) this._previewRing.visible = false;
+    if (this._previewDisc) this._previewDisc.visible = false;
   },
 };

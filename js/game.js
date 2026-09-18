@@ -815,6 +815,20 @@ const Game = {
     return this.run ? this.run.towers.find((t) => t.spotIndex === spotIndex) : null;
   },
 
+  /* ---------------- XEM TRƯỚC VŨ KHÍ TRƯỚC KHI XÂY ----------------
+     previewSpot lưu {spotIndex, typeId} khi người chơi ĐANG chọn một
+     loại vũ khí trong bảng chọn nhưng CHƯA bấm Xác Nhận. Dùng để vẽ
+     vòng tầm bắn xem trước (2D và 3D) mà KHÔNG trừ vàng / xây tháp. */
+  setPreviewSpot(spotIndex, typeId) {
+    const spot = this.levelDef ? this.levelDef.buildSpots[spotIndex] : null;
+    const def = GAME_DATA.towerTypes[typeId];
+    if (!spot || !def) { this.previewSpot = null; return; }
+    this.previewSpot = { spotIndex, typeId, x: spot.x, y: spot.y, range: def.range };
+  },
+  clearPreviewSpot() {
+    this.previewSpot = null;
+  },
+
   buildTower(spotIndex, typeId) {
     const r = this.run;
     const def = GAME_DATA.towerTypes[typeId];
@@ -1036,6 +1050,7 @@ const Game = {
         const sel = this.towerAt(this.selectedSpotIndex);
         if (sel) sel.drawRange(ctx);
       }
+      this._drawPreviewRange(ctx);
       for (const t of this.run.towers) t.draw(ctx);
       if (this.run.heroEntity) {
         this.run.heroEntity.drawRange(ctx);
@@ -1236,6 +1251,30 @@ const Game = {
       ctx.textBaseline = "middle";
       ctx.fillText("+", spots[i].x, spots[i].y);
     }
+  },
+
+  /* Vòng tầm bắn XEM TRƯỚC khi người chơi đang chọn vũ khí trong bảng
+     chọn (chưa xác nhận triển khai) - vẽ màu xanh lam để phân biệt với
+     vòng tầm bắn vàng (mục XXVII) của tháp đã xây / đang chọn. */
+  _drawPreviewRange(ctx) {
+    const pv = this.previewSpot;
+    if (!pv) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(pv.x, pv.y, pv.range, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(90,170,220,.12)";
+    ctx.fill();
+    ctx.setLineDash([6, 5]);
+    ctx.strokeStyle = "rgba(120,200,240,.85)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(pv.x, pv.y, 24, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(120,200,240,.9)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
   },
 
   _drawCastle(ctx) {
