@@ -2,7 +2,8 @@
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1c140e">
 <title>Đại Cồ Việt – Thủ Thành Hoa Lư</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -30,21 +31,44 @@
   </div>
 </section>
 
-<!-- ================= MÀN HÌNH MENU CHÍNH ================= -->
+<!-- ================= THÀNH HOA LƯ (MENU / HUB) ================= -->
 <section id="screen-menu" class="screen">
-  <div class="menu-panel">
-    <h2 class="panel-title">ĐẠI CỒ VIỆT</h2>
-    <p class="panel-sub">Thủ Thành Hoa Lư</p>
-    <nav class="menu-list">
-      <button class="btn btn-primary" id="btn-start">Bắt đầu</button>
-      <button class="btn" id="btn-continue">Tiếp tục</button>
-      <button class="btn" id="btn-menu-heroes">Tướng</button>
-      <button class="btn" id="btn-menu-quests">Nhiệm vụ</button>
-      <button class="btn" id="btn-menu-achievements">🏆 Thành tích</button>
-      <button class="btn" id="btn-guide">Hướng dẫn</button>
-      <button class="btn" id="btn-settings">Cài đặt</button>
-    </nav>
-    <p class="menu-footnote">năm 968 – Đinh Bộ Lĩnh dẹp loạn 12 sứ quân</p>
+  <div class="menu-panel hub-panel">
+    <h2 class="panel-title">🏯 THÀNH HOA LƯ</h2>
+    <p class="panel-sub">Đại Cồ Việt · năm 968</p>
+
+    <div class="hub-purse">
+      <span class="hub-purse-item">🪙 <b id="hub-gold">0</b></span>
+      <span class="hub-purse-item">✨ <b id="hub-exp">0</b></span>
+      <span class="hub-purse-item">⭐ <b id="hub-stars">0</b></span>
+    </div>
+
+    <div class="hub-actions">
+      <button class="btn btn-primary btn-hub-main" id="btn-start">🗺️ Chiến dịch</button>
+      <button class="btn btn-hub-main" id="btn-continue">▶ Tiếp tục trận dở</button>
+    </div>
+
+    <div class="hub-grid">
+      <button class="hub-tile" id="btn-menu-heroes"><span class="hub-ico">👑</span><span>Tướng</span></button>
+      <button class="hub-tile" id="btn-menu-army"><span class="hub-ico">⚔️</span><span>Quân</span></button>
+      <button class="hub-tile" id="btn-menu-buildings"><span class="hub-ico">🏹</span><span>Công trình</span></button>
+      <button class="hub-tile" id="btn-menu-quests"><span class="hub-ico">📜</span><span>Nhiệm vụ</span></button>
+      <button class="hub-tile" id="btn-menu-achievements"><span class="hub-ico">🏆</span><span>Thành tích</span></button>
+      <button class="hub-tile" id="btn-guide"><span class="hub-ico">📖</span><span>Hướng dẫn</span></button>
+      <button class="hub-tile" id="btn-settings"><span class="hub-ico">⚙️</span><span>Cài đặt</span></button>
+    </div>
+
+    <p class="menu-footnote">Đinh Bộ Lĩnh dẹp loạn 12 sứ quân</p>
+  </div>
+</section>
+
+<!-- ================= KHO CÔNG TRÌNH / QUÂN (tra cứu) ================= -->
+<section id="screen-codex" class="screen">
+  <div class="menu-panel wide">
+    <h2 class="panel-title" id="codex-title">Công trình</h2>
+    <p class="panel-sub" id="codex-sub"></p>
+    <div class="codex-list" id="codex-list"></div>
+    <button class="btn btn-primary" id="btn-codex-back">Quay lại</button>
   </div>
 </section>
 
@@ -125,6 +149,14 @@
       <button class="btn btn-toggle" id="btn-toggle-shadows">Bật</button>
     </div>
     <div class="settings-row">
+      <span>🎥 Camera chiến trường</span>
+      <button class="btn btn-toggle" id="btn-toggle-camera">Bật</button>
+    </div>
+    <div class="settings-row">
+      <span>🗺️ Mini-map</span>
+      <button class="btn btn-toggle" id="btn-toggle-minimap">Bật</button>
+    </div>
+    <div class="settings-row">
       <span>💥 Số sát thương</span>
       <button class="btn btn-toggle" id="btn-toggle-damage-numbers">Bật</button>
     </div>
@@ -144,11 +176,12 @@
   </div>
 </section>
 
-<!-- ================= MÀN HÌNH CHỌN MÀN CHƠI ================= -->
+<!-- ================= BẢN ĐỒ CHIẾN DỊCH ================= -->
 <section id="screen-levels" class="screen">
-  <div class="menu-panel wide">
-    <h2 class="panel-title">Chọn màn chơi</h2>
-    <div class="level-list" id="level-list"></div>
+  <div class="menu-panel wide campaign-panel">
+    <h2 class="panel-title">🗺️ BẢN ĐỒ CHIẾN DỊCH</h2>
+    <p class="panel-sub" id="campaign-progress">Hoa Lư → Quyết chiến</p>
+    <div class="campaign-map" id="level-list"></div>
     <button class="btn btn-primary" id="btn-levels-back">Quay lại</button>
   </div>
 </section>
@@ -187,26 +220,33 @@
 
 <!-- ================= MÀN HÌNH CHƠI ================= -->
 <section id="screen-game" class="screen">
+
+  <!-- ----- PHÍA TRÊN: thanh thông tin gọn ----- -->
   <div class="hud">
-    <div class="hud-stat hud-gold" data-tip="Vàng dùng để xây và nâng cấp tháp trong trận."><span class="hud-icon">🪙</span><span id="hud-gold">0</span></div>
-    <div class="hud-stat hud-hp" data-tip="Máu của thành. Hết máu là thua trận.">
-      <span class="hud-icon">🏯</span><span id="hud-hp">0</span>
-      <span class="hud-hp-track"><span id="hud-hp-fill" class="hud-hp-fill"></span></span>
+    <div class="hud-row hud-row-main">
+      <div class="hud-stat hud-hp" data-tip="Máu của thành. Hết máu là thua trận.">
+        <span class="hud-icon">🏯</span>
+        <span class="hud-hp-text"><span id="hud-hp">0</span></span>
+        <span class="hud-hp-track"><span id="hud-hp-fill" class="hud-hp-fill"></span></span>
+      </div>
+      <div class="hud-stat hud-gold" data-tip="Vàng dùng để xây và nâng cấp công trình."><span class="hud-icon">🪙</span><span id="hud-gold">0</span></div>
+      <div class="hud-stat hud-wave" data-tip="Đợt hiện tại / tổng số đợt."><span class="hud-icon">⚔️</span><span id="hud-wave">0/0</span></div>
+      <div class="hud-stat hud-time" data-tip="Thời gian trận đấu."><span class="hud-icon">⏱</span><span id="hud-time">0:00</span></div>
     </div>
-    <div class="hud-stat hud-score" data-tip="Điểm số của trận. Điểm cao mở thêm sao và thành tích."><span class="hud-icon">⚔</span><span id="hud-score">0</span></div>
-    <div class="hud-stat hud-tide hidden" id="hud-tide"><span class="hud-icon">🌊</span><span id="hud-tide-label">Triều rút</span></div>
-    <div class="hud-stat hud-wave" data-tip="Đợt hiện tại / tổng số đợt của màn."><span class="hud-icon">🌊</span><span id="hud-wave">0/0</span></div>
-    <div class="hud-actions">
-      <button class="btn btn-small hidden" id="btn-skill" data-tip="Kỹ năng chủ động của tướng (phím S)">✨</button>
-      <button class="btn btn-small" id="btn-speed" data-tip="Đổi tốc độ game (phím F)">x1</button>
-      <button class="btn btn-small" id="btn-pause" data-tip="Tạm dừng (phím P)">II</button>
-      <button class="btn btn-small btn-exit" id="btn-exit" data-tip="Thoát về menu (tiến trình được lưu)">✕</button>
+    <div class="hud-row hud-row-sub">
+      <span class="hud-mini" id="hud-stage"></span>
+      <span class="hud-mini hud-score-mini">⭐ <span id="hud-score">0</span></span>
+      <span class="hud-mini hud-tide hidden" id="hud-tide">🌊 <span id="hud-tide-label">Triều rút</span></span>
+      <span class="hud-mini hud-boss-flag hidden" id="hud-boss-flag">👹 BOSS</span>
     </div>
   </div>
+
   <div id="combo-badge" class="combo-badge hidden">COMBO x0</div>
 
+  <!-- ----- TRUNG TÂM: chiến trường ----- -->
   <div class="game-stage">
     <canvas id="game-canvas" width="960" height="540"></canvas>
+
     <div id="boss-bar" class="boss-bar hidden">
       <div class="boss-bar-head">
         <span id="boss-bar-icon">👹</span>
@@ -216,17 +256,53 @@
       <div class="boss-bar-track"><div id="boss-bar-fill" class="boss-bar-fill"></div></div>
       <div id="boss-bar-hp" class="boss-bar-hp">0 / 0</div>
     </div>
+
+    <!-- Nút camera chiến trường -->
+    <div class="cam-controls" id="cam-controls">
+      <button class="cam-btn" id="btn-cam-in" data-tip="Phóng to">🔍+</button>
+      <button class="cam-btn" id="btn-cam-out" data-tip="Thu nhỏ">🔍−</button>
+      <button class="cam-btn" id="btn-cam-center" data-tip="Về trung tâm bản đồ">🎯</button>
+      <button class="cam-btn hidden" id="btn-cam-boss" data-tip="Theo dõi Boss">👑</button>
+    </div>
+
+    <!-- Mini-map -->
+    <div class="minimap-wrap" id="minimap-wrap">
+      <canvas id="minimap" width="192" height="108"></canvas>
+    </div>
+
     <div id="tower-picker" class="tower-picker hidden"></div>
+
+    <!-- Animation tiến hoá vũ khí -->
+    <div id="evolution-overlay" class="evolution-overlay hidden">
+      <div class="evo-card">
+        <div class="evo-flash"></div>
+        <div class="evo-kicker">✨ VŨ KHÍ ĐÃ TIẾN HOÁ</div>
+        <div class="evo-icon" id="evo-icon">🏹</div>
+        <div class="evo-name" id="evo-name">THẦN CUNG HOA LƯ</div>
+        <div class="evo-level" id="evo-level">LEVEL 10</div>
+        <div class="evo-stats" id="evo-stats"></div>
+        <div class="evo-ultimate hidden" id="evo-ultimate"></div>
+      </div>
+    </div>
   </div>
 
+  <!-- ----- PHÍA DƯỚI: thanh điều khiển ----- -->
   <div class="game-footer">
     <div id="hero-hud" class="hero-hud hidden">
       <span id="hero-hud-icon" class="hero-hud-icon">🧑</span>
       <span id="hero-hud-name" class="hero-hud-name"></span>
       <span id="hero-hud-passive" class="hero-hud-passive"></span>
     </div>
-    <button class="btn btn-primary btn-wave" id="btn-start-wave" data-tip="Thả quân địch của đợt tiếp theo (phím Space)">Bắt đầu đợt</button>
-    <span class="footer-hint">Space: đợt · P: dừng · S: kỹ năng · F: tốc độ · Esc: đóng</span>
+    <div class="dock">
+      <button class="btn btn-primary btn-wave" id="btn-start-wave" data-tip="Thả quân địch của đợt tiếp theo (Space)">Bắt đầu đợt</button>
+      <div class="dock-tools">
+        <button class="dock-btn hidden" id="btn-skill" data-tip="Kỹ năng tướng (S)">✨</button>
+        <button class="dock-btn" id="btn-build" data-tip="Xem danh sách công trình xây được">🏹</button>
+        <button class="dock-btn" id="btn-speed" data-tip="Đổi tốc độ (F)">x1</button>
+        <button class="dock-btn" id="btn-pause" data-tip="Tạm dừng (P)">⏸</button>
+        <button class="dock-btn dock-exit" id="btn-exit" data-tip="Thoát về Thành Hoa Lư">✕</button>
+      </div>
+    </div>
   </div>
 
   <!-- Overlay thắng / thua -->
@@ -248,7 +324,7 @@
   <div id="overlay-pause" class="overlay hidden">
     <div class="overlay-panel">
       <h2>⏸ Tạm dừng</h2>
-      <div id="pause-summary" class="pause-summary"></div>
+      <div id="pause-stats" class="pause-summary"></div>
       <div class="pause-settings">
         <div class="settings-row">
           <span>🎵 Nhạc nền</span>
@@ -270,7 +346,6 @@
 </section>
 
 <div id="tooltip" class="tooltip hidden"></div>
-<div id="tooltip" class="tooltip hidden"></div>
 <div id="toast-container" class="toast-container"></div>
 
 <script src="shared/storage-service.js"></script>
@@ -279,6 +354,8 @@
 <script src="shared/quest-service.js"></script>
 <script src="shared/achievement-service.js"></script>
 <script src="js/data.js"></script>
+<script src="js/tower-tiers.js"></script>
+<script src="js/camera.js"></script>
 <script src="js/state.js"></script>
 <script src="js/entities.js"></script>
 <script src="vendor/three.min.js"></script>

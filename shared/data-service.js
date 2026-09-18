@@ -37,7 +37,68 @@ const DataService = (() => {
     adminLogs: "collection:adminLogs",
   };
 
-  const SCHEMA_VERSION = 10;
+  const SCHEMA_VERSION = 11;
+
+  /* ---------------------------------------------------------
+     GIAI ĐOẠN 6 - HỆ THỐNG CẤP VŨ KHÍ / CÔNG TRÌNH 1 -> 10
+     Mỗi công trình có 6 MỐC TIẾN HOÁ (tier). Mỗi mốc đổi TÊN,
+     đổi NGOẠI HÌNH (dựng lại mesh 3D + ký hiệu 2D) và đổi HIỆU
+     ỨNG (fx). Các mốc `evolution: true` sẽ phát animation tiến hoá
+     toàn màn hình khi người chơi nâng tới.
+
+     fx (js/tower-tiers.js đọc để quyết định hiệu ứng):
+       basic    - không hiệu ứng thêm
+       metal    - thêm chi tiết kim loại, tia lửa khi bắn
+       aura     - mở vòng hào quang dưới chân
+       trail    - đạn có vệt đuôi
+       legend   - hào quang + hạt bay + vệt đuôi mạnh
+       ultimate - đổi diện mạo hoàn toàn, có tên riêng + đòn tối thượng
+
+     Dữ liệu này nằm trong DataService nên Admin sửa được, KHÔNG
+     hard-code trong file game.
+     --------------------------------------------------------- */
+  const TOWER_TIER_NAMES = {
+    cung_thu:      ["Cung Thường", "Cung Gia Cố Kim Loại", "Cung Chiến Tướng", "Cung Linh", "Thần Cung", "THẦN CUNG HOA LƯ"],
+    no_than:       ["Nỏ Gỗ", "Nỏ Bọc Đồng", "Chiến Nỏ", "Đại Chiến Nỏ", "Nỏ Thần Kim Quy", "HOA LƯ THIÊN NỖ"],
+    voi_chien:     ["Voi Trận", "Voi Bọc Giáp", "Voi Chiến Tướng", "Voi Xung Thành", "Thần Tượng", "BẠCH TƯỢNG ĐẠI CỒ VIỆT"],
+    coc_nhon:      ["Cọc Gỗ", "Cọc Vót Sắt", "Bãi Cọc Chiến", "Bãi Cọc Ngầm", "Thiên La Địa Võng", "BÃI CỌC BẠCH ĐẰNG"],
+    may_ban_da:    ["Máy Bắn Đá", "Máy Bắn Gia Cố", "Chiến Xa Phá Thành", "Đại Pháo Đá", "Thần Khí Công Thành", "HOA LƯ CỰ THẠCH"],
+    riu_chien:     ["Rìu Thường", "Rìu Thép", "Rìu Chiến Tướng", "Rìu Hỏa", "Thần Phủ", "ĐẠI VIỆT THẦN PHỦ"],
+    hoa_tien:      ["Hoả Tiễn", "Hoả Tiễn Gia Cố", "Hoả Xa Chiến Tướng", "Hoả Long Tiễn", "Thần Hoả", "HỎA LONG THIÊN TIỄN"],
+    khien_binh:    ["Khiên Gỗ", "Khiên Bọc Đồng", "Khiên Chiến Tướng", "Thiết Bích", "Thần Thuẫn", "KIM CANG HOA LƯ THUẪN"],
+    thap_hoa_cong: ["Lò Hoả Công", "Lò Gia Cố", "Hoả Đài Chiến Tướng", "Hoả Ngục Đài", "Thần Hoả Đài", "HỎA THẦN HOA LƯ ĐÀI"],
+    dao_si:        ["Đạo Sĩ", "Pháp Sư", "Đại Pháp Sư", "Tiên Sư Linh Phù", "Quốc Sư", "QUỐC SƯ ĐẠI CỒ VIỆT"],
+    tam_doc:       ["Bẫy Độc", "Bẫy Độc Gia Cố", "Trận Độc Chiến Tướng", "Vạn Độc Trận", "Thần Độc", "VẠN ĐỘC HOA LƯ TRẬN"],
+    trong_dong:    ["Trống Trận", "Trống Bọc Đồng", "Trống Chiến Tướng", "Trống Đông Sơn", "Thần Cổ", "ĐỒNG CỔ ĐẠI CỒ VIỆT"],
+  };
+
+  const TIER_LEVELS = [1, 3, 5, 7, 9, 10];
+  const TIER_FX = ["basic", "metal", "aura", "trail", "legend", "ultimate"];
+  const TIER_LABEL = ["Cơ bản", "Gia cố", "TIẾN HOÁ", "Chiến tướng", "HUYỀN THOẠI", "TỐI THƯỢNG"];
+
+  /* Sinh mảng `tiers` + nâng maxLevel lên 10 cho một công trình. */
+  function withTowerTiers(b) {
+    if (Array.isArray(b.tiers) && b.tiers.length === TIER_LEVELS.length && b.maxLevel === 10) return b;
+    const names = TOWER_TIER_NAMES[b.id] || [];
+    const base = b.name || b.id;
+    const tiers = TIER_LEVELS.map((lv, i) => ({
+      level: lv,
+      name: names[i] || `${base} cấp ${lv}`,
+      label: TIER_LABEL[i],
+      fx: TIER_FX[i],
+      evolution: lv === 5 || lv === 10,
+      ultimate: lv === 10 ? `${(names[5] || base)} – đòn tối thượng: +35% sát thương, +15% tầm bắn.` : null,
+    }));
+    return Object.assign({}, b, {
+      maxLevel: 10,
+      tiers,
+      // Chỉ số tăng đều tới cấp 10: giữ nguyên hệ số gốc của bản cũ (đã cân
+      // bằng cho 5 cấp) nhưng giảm nhẹ để tổng sức mạnh cấp 10 không vỡ game.
+      upgradeDamageMult: b.upgradeDamageMult !== undefined ? +(b.upgradeDamageMult * 0.62).toFixed(3) : 0,
+      upgradeRangeMult: b.upgradeRangeMult !== undefined ? +(b.upgradeRangeMult * 0.62).toFixed(3) : 0,
+      upgradeAuraMult: b.upgradeAuraMult !== undefined ? +(b.upgradeAuraMult * 0.62).toFixed(3) : undefined,
+    });
+  }
 
   /* ---------------------------------------------------------
      DỮ LIỆU MẶC ĐỊNH (seed)
@@ -392,7 +453,7 @@ const DataService = (() => {
         },
         enabled: true,
       },
-    ];
+    ].map(withTowerTiers);
   }
 
   /* ---------------------------------------------------------
@@ -717,6 +778,109 @@ const DataService = (() => {
           },
         ],
       },
+      /* ------- GIAI ĐOẠN 6: Boss của 2 màn mới (Level 9, Level 10) ------- */
+      {
+        id: "boss_tong_tien_cong", name: "Đại Boss – Nguyên Soái Liêu Đông",
+        hp: 12000, damage: 24, defense: 24, resistance: 32, magicResist: 28,
+        speed: 32, reward: 2200, rewardExp: 1000,
+        skill: "Tổng Tiến Công: liên tục triệu viện binh, phá công trình và tự bọc giáp.",
+        skillCooldown: 0,
+        icon: "🏴", color: "#3d1f4a",
+        description: "Nguyên soái chỉ huy cuộc tổng tiến công vào Hoa Lư. Càng bị dồn ép càng hung hãn.",
+        enabled: true,
+        phases: defaultBossPhases(),
+        abilities: [
+          { id: "thiet_bich", name: "Thiết Bích", trigger: { type: "interval", seconds: 18 }, cooldown: 18,
+            effect: "shield_self", shieldPercent: 20 },
+          { id: "pha_luy", name: "Phá Luỹ", trigger: { type: "interval", seconds: 13 }, cooldown: 13,
+            effect: "tower_disable", disableRadius: 200, disableSeconds: 4 },
+          { id: "vien_binh_1", name: "Viện Binh Đợt 1", trigger: { type: "hp_below", percent: 70 }, cooldown: 22,
+            effect: "summon", summonType: "cung_no_tong", summonCount: 5 },
+          { id: "vien_binh_2", name: "Viện Binh Đợt 2", trigger: { type: "hp_below", percent: 40 }, cooldown: 22,
+            effect: "summon", summonType: "thiet_ky", summonCount: 5 },
+          { id: "tong_luc", name: "Dốc Toàn Lực", trigger: { type: "hp_below", percent: 25 }, once: true,
+            effect: "self_buff", speedBonus: 0.3, damageBonus: 0.35 },
+        ],
+      },
+      {
+        id: "boss_quyet_chien", name: "Ma Vương Thập Nhị Sứ Quân",
+        hp: 18000, damage: 30, defense: 28, resistance: 35, magicResist: 32,
+        speed: 30, reward: 3200, rewardExp: 1600,
+        skill: "FINAL BOSS 3 giai đoạn: đánh thường → gọi viện binh → nổi giận đổi hoàn toàn lối đánh.",
+        skillCooldown: 0,
+        icon: "👹", color: "#6b0f1a",
+        description: "Oán khí của cả 12 sứ quân tụ lại thành một, quyết chiến trước cổng Hoa Lư. Trận cuối của chiến dịch.",
+        enabled: true,
+        phases: [
+          { id: "p1", name: "Giai đoạn 1 – Giao tranh", hpFromPct: 100, hpToPct: 66, speedMult: 1, damageMult: 1, enrage: false },
+          { id: "p2", name: "Giai đoạn 2 – Viện binh", hpFromPct: 66, hpToPct: 33, speedMult: 1.15, damageMult: 1.25, enrage: false },
+          { id: "p3", name: "Giai đoạn 3 – NỔI GIẬN", hpFromPct: 33, hpToPct: 0, speedMult: 1.4, damageMult: 1.6, enrage: true },
+        ],
+        abilities: [
+          { id: "hac_khi", name: "Hắc Khí Hộ Thể", trigger: { type: "interval", seconds: 16 }, cooldown: 16,
+            effect: "shield_self", shieldPercent: 22 },
+          { id: "am_binh", name: "Triệu Âm Binh", trigger: { type: "hp_below", percent: 66 }, cooldown: 18,
+            effect: "summon", summonType: "ma_binh", summonCount: 6 },
+          { id: "quy_tot_trieu", name: "Triệu Quỷ Tốt", trigger: { type: "hp_below", percent: 50 }, cooldown: 20,
+            effect: "summon", summonType: "quy_tot", summonCount: 6 },
+          { id: "huy_thanh", name: "Huỷ Công Trình", trigger: { type: "interval", seconds: 11 }, cooldown: 11,
+            effect: "tower_disable", disableRadius: 230, disableSeconds: 4.5 },
+          { id: "hoi_khi", name: "Hấp Thụ Oán Khí", trigger: { type: "interval", seconds: 9 }, cooldown: 9,
+            effect: "heal_self", healPercent: 3 },
+          { id: "cuong_no_cuoi", name: "Nộ Khí Xung Thiên", trigger: { type: "hp_below", percent: 33 }, once: true,
+            effect: "self_buff", speedBonus: 0.4, damageBonus: 0.5 },
+        ],
+      },
+      /* ------- MINI BOSS (dùng từ Level 3 trở đi, giữa màn) ------- */
+      {
+        id: "miniboss_son_tac", name: "Mini Boss – Sơn Tặc Đầu Lĩnh",
+        hp: 2200, damage: 9, defense: 12, resistance: 16, magicResist: 10,
+        speed: 44, reward: 260, rewardExp: 120,
+        skill: "Cướp đường: tăng tốc mạnh khi máu thấp.",
+        skillCooldown: 0,
+        icon: "🪓", color: "#7a4a1f",
+        description: "Đầu lĩnh sơn tặc chặn đường núi, xuất hiện giữa màn.",
+        enabled: true,
+        phases: defaultBossPhases(),
+        abilities: [
+          { id: "cuop_duong", name: "Cướp Đường", trigger: { type: "hp_below", percent: 45 }, once: true,
+            effect: "self_buff", speedBonus: 0.45, damageBonus: 0.1 },
+        ],
+      },
+      {
+        id: "miniboss_ky_tuong", name: "Mini Boss – Kỵ Tướng Tiên Phong",
+        hp: 3400, damage: 12, defense: 15, resistance: 20, magicResist: 14,
+        speed: 48, reward: 380, rewardExp: 180,
+        skill: "Xung phong: triệu kỵ binh và phá công trình quanh mình.",
+        skillCooldown: 0,
+        icon: "🐎", color: "#4a3a7a",
+        description: "Kỵ tướng dẫn đầu mũi đột kích, xuất hiện trước đợt Boss.",
+        enabled: true,
+        phases: defaultBossPhases(),
+        abilities: [
+          { id: "xung_phong", name: "Xung Phong", trigger: { type: "hp_below", percent: 55 }, cooldown: 20,
+            effect: "summon", summonType: "ky_binh", summonCount: 4 },
+          { id: "dap_pha", name: "Đạp Phá", trigger: { type: "interval", seconds: 16 }, cooldown: 16,
+            effect: "tower_disable", disableRadius: 130, disableSeconds: 2.5 },
+        ],
+      },
+      {
+        id: "miniboss_chien_than", name: "Mini Boss – Chiến Thần Vây Thành",
+        hp: 5200, damage: 16, defense: 20, resistance: 24, magicResist: 20,
+        speed: 36, reward: 520, rewardExp: 250,
+        skill: "Vây thành: tự bọc giáp và vô hiệu hoá công trình.",
+        skillCooldown: 0,
+        icon: "🛡️", color: "#2f4a5a",
+        description: "Chiến thần chỉ huy vòng vây, dày giáp và khó hạ.",
+        enabled: true,
+        phases: defaultBossPhases(),
+        abilities: [
+          { id: "giap_tran", name: "Giáp Trận", trigger: { type: "interval", seconds: 17 }, cooldown: 17,
+            effect: "shield_self", shieldPercent: 20 },
+          { id: "vay_ham", name: "Vây Hãm", trigger: { type: "interval", seconds: 14 }, cooldown: 14,
+            effect: "tower_disable", disableRadius: 160, disableSeconds: 3 },
+        ],
+      },
     ];
   }
 
@@ -736,7 +900,129 @@ const DataService = (() => {
     thang_long: "citadel",
     co_loa: "citadel",
     sieu_loai: "field",   // đồng bằng, luỹ tre
+    tong_tien_cong: "field",  // đồng bằng trống trải, nhiều mũi tiến công
+    quyet_chien_hoa_lu: "karst", // trở về Hoa Lư cho trận quyết chiến cuối
   };
+
+  /* ---------------------------------------------------------
+     GIAI ĐOẠN 6 - CHIẾN DỊCH 10 LEVEL, WAVE CÓ DIỄN BIẾN
+     Mỗi Level có số Wave riêng, TĂNG DẦN theo thứ tự màn:
+       L1=10, L2=12, L3=14, L4=15, L5=16, L6=18, L7=20, L8=20, L9=22, L10=25
+     Các đợt do người viết tay (có `warning`, waveType đặc biệt) được GIỮ
+     NGUYÊN. Phần còn thiếu được sinh thêm theo một kịch bản có DIỄN BIẾN
+     thật sự (quân thường -> cung thủ -> kỵ binh -> hỗn hợp -> tank ->
+     swarm -> Mini Boss -> Boss), chứ không phải chỉ tăng HP.
+     Kết quả được LƯU vào collection "stages" nên Admin sửa lại được.
+     --------------------------------------------------------- */
+  const STAGE_WAVE_TARGET = {
+    hoa_lu: 10, dai_la: 12, bach_dang: 14, chi_lang: 15, binh_lo: 16,
+    thang_long: 18, co_loa: 20, sieu_loai: 20,
+    tong_tien_cong: 22, quyet_chien_hoa_lu: 25,
+  };
+
+  /* Bể quân địch dùng được theo độ khó của màn. */
+  function enemyPoolFor(order) {
+    const basic = ["quan_su_quan", "tho_phi"];
+    const fast = ["ky_binh"];
+    const tank = ["truong_giap"];
+    const ranged = ["cung_thu_dich"];
+    const support = [];
+    const special = [];
+    if (order >= 3) { fast.push("dieu_hau"); support.push("thay_mo"); tank.push("khien_chan"); }
+    if (order >= 4) { tank.push("thiet_ky"); ranged.push("cung_no_tong"); special.push("tuong_giac"); }
+    if (order >= 5) { special.push("quy_tot"); }
+    if (order >= 6) { special.push("ma_binh"); }
+    return { basic, fast, tank, ranged, support, special };
+  }
+
+  /* Mini Boss dùng cho màn thứ `order` (từ Level 3 trở đi). */
+  function miniBossFor(order) {
+    if (order < 3) return null;
+    if (order <= 4) return "miniboss_son_tac";
+    if (order <= 7) return "miniboss_ky_tuong";
+    return "miniboss_chien_than";
+  }
+
+  /* Sinh một đợt quân có "diễn biến" tại vị trí `i` trên tổng `total` đợt. */
+  function makeWave(stageOrder, i, total, rnd) {
+    const p = enemyPoolFor(stageOrder);
+    const t = total > 1 ? i / (total - 1) : 0;           // 0 -> 1 theo tiến độ màn
+    const scale = 1 + t * 1.1 + (stageOrder - 1) * 0.12; // số lượng tăng dần
+    const pick = (arr) => arr[Math.floor(rnd() * arr.length) % arr.length];
+    const n = (base) => Math.max(3, Math.round(base * scale));
+    const kind = i % 7;
+
+    switch (kind) {
+      case 0:
+        return { groups: [{ type: pick(p.basic), count: n(6), interval: 0.7 }] };
+      case 1:
+        return { warning: "⚠ CUNG THỦ! Địch bắn trả từ xa, hãy dồn sát thương sớm.",
+          groups: [{ type: pick(p.ranged), count: n(5), interval: 0.6 },
+                   { type: pick(p.basic), count: n(4), interval: 0.7 }] };
+      case 2:
+        return { waveType: "fast", warning: "⚠ ĐỢT NHANH! Kỵ binh phi nước đại.",
+          groups: [{ type: pick(p.fast), count: n(7), interval: 0.4, speedMultiplier: 1.2 }] };
+      case 3:
+        return { groups: [{ type: pick(p.tank), count: n(5), interval: 0.75 },
+                          { type: pick(p.ranged), count: n(4), interval: 0.6 },
+                          { type: pick(p.fast), count: n(4), interval: 0.5 }] };
+      case 4:
+        return { waveType: "armor", warning: "⚠ ĐỢT THIẾT GIÁP! Giáp dày – hãy dùng tháp phép hoặc xuyên giáp.",
+          groups: [{ type: pick(p.tank), count: n(6), interval: 0.6, armorBonus: 3 + Math.floor(stageOrder / 2) }] };
+      case 5: {
+        const g = [{ type: pick(p.basic), count: n(11), interval: 0.28, hpMultiplier: 0.7 }];
+        if (p.support.length) g.push({ type: pick(p.support), count: 2, interval: 1.1 });
+        return { waveType: "swarm", warning: "⚠ ĐỢT QUÂN ĐÔNG! Số lượng áp đảo.", groups: g };
+      }
+      default: {
+        const g = [{ type: pick(p.tank), count: n(4), interval: 0.7 },
+                   { type: pick(p.fast), count: n(5), interval: 0.45 }];
+        if (p.special.length) g.push({ type: pick(p.special), count: Math.max(2, Math.round(n(2) * 0.5)), interval: 0.9 });
+        return { warning: "⚠ QUÂN HỖN HỢP! Nhiều loại quân cùng tiến công.", groups: g };
+      }
+    }
+  }
+
+  /* Mở rộng danh sách đợt của một màn lên đúng `target` đợt:
+     giữ nguyên các đợt viết tay, chèn Mini Boss, đặt Boss ở đợt cuối. */
+  function expandStageWaves(stage, target) {
+    const waves = Array.isArray(stage.waves) ? stage.waves.slice() : [];
+    if (!target || waves.length >= target) return waves;
+
+    // tách đợt Boss ra khỏi danh sách (luôn là đợt cuối cùng)
+    let bossWave = null;
+    for (let i = waves.length - 1; i >= 0; i--) {
+      const hasBoss = (waves[i].groups || []).some((g) => g.boss);
+      if (hasBoss) { bossWave = waves.splice(i, 1)[0]; break; }
+    }
+
+    const order = stage.order || 1;
+    const rnd = seededRandom("waves:" + stage.id);
+    const bodyTarget = target - (bossWave ? 1 : 0) - (miniBossFor(order) ? 1 : 0);
+    let i = waves.length;
+    while (waves.length < bodyTarget) {
+      waves.push(makeWave(order, i, bodyTarget, rnd));
+      i++;
+    }
+
+    // Mini Boss: đặt ở khoảng 65% chặng đường, ngay trước nhóm đợt cuối
+    const miniId = miniBossFor(order);
+    if (miniId) {
+      const at = Math.max(2, Math.floor(waves.length * 0.65));
+      const p = enemyPoolFor(order);
+      waves.splice(at, 0, {
+        waveType: "miniboss",
+        warning: "⚠ MINI BOSS XUẤT HIỆN! Hãy dồn hoả lực trước khi hắn tới thành.",
+        groups: [
+          { type: p.tank[0], count: 6 + order, interval: 0.6 },
+          { boss: miniId },
+        ],
+      });
+    }
+
+    if (bossWave) waves.push(bossWave);
+    return waves;
+  }
 
   const THEME_OBSTACLES = {
     karst: ["rock", "rock", "tree"],
@@ -1078,16 +1364,91 @@ const DataService = (() => {
             groups: [{ type: "thiet_ky", count: 16, interval: 0.35 }, { type: "tuong_giac", count: 7, interval: 0.55 }, { boss: "boss_do_canh_thac" }] },
         ],
       },
+      /* ============ LEVEL 9 – TỔNG TIẾN CÔNG ============ */
+      {
+        id: "tong_tien_cong", order: 9, name: "Tổng tiến công",
+        mapName: "Cánh đồng Trường Yên",
+        description: "Tàn dư các sứ quân hợp binh mở cuộc tổng tiến công vào vùng đệm trước Hoa Lư. Đường tiến quân trải rộng, phải giữ nhiều mũi cùng lúc.",
+        background: "tong_tien_cong",
+        difficulty: 9,
+        unlockCondition: { type: "stage_cleared", stageId: "sieu_loai" },
+        rewardGold: 700, rewardExp: 400,
+        enabled: true,
+        path: [
+          { x: -40, y: 70 }, { x: 140, y: 70 }, { x: 140, y: 250 },
+          { x: 330, y: 250 }, { x: 330, y: 60 }, { x: 520, y: 60 },
+          { x: 520, y: 470 }, { x: 700, y: 470 }, { x: 700, y: 170 },
+          { x: 860, y: 170 }, { x: 860, y: 380 }, { x: 920, y: 380 },
+        ],
+        castle: { x: 930, y: 380 },
+        buildSpots: [
+          { x: 70, y: 180 }, { x: 240, y: 70 }, { x: 240, y: 250 },
+          { x: 430, y: 60 }, { x: 430, y: 300 }, { x: 430, y: 470 },
+          { x: 610, y: 470 }, { x: 610, y: 170 }, { x: 780, y: 170 },
+          { x: 780, y: 380 }, { x: 880, y: 270 },
+        ],
+        waves: [
+          { groups: [{ type: "thiet_ky", count: 14, interval: 0.4 }, { type: "cung_no_tong", count: 10, interval: 0.5 }] },
+          { waveType: "swarm", warning: "⚠ BIỂN NGƯỜI! Tàn quân bốn phương đổ về.",
+            groups: [{ type: "quan_su_quan", count: 28, interval: 0.22, hpMultiplier: 0.75 }, { type: "tho_phi", count: 10, interval: 0.4 }] },
+          { waveType: "elite", warning: "⚠ ĐỢT TINH NHUỆ! Thân binh của các sứ quân hợp lại.",
+            groups: [{ type: "tuong_giac", count: 5, interval: 0.8, eliteCount: 5 }, { type: "thiet_ky", count: 10, interval: 0.45 }] },
+          { waveType: "survival", surviveSeconds: 40, warning: "⚠ SỐNG SÓT 40 GIÂY! Đây là mũi tiến công liên tục.",
+            groups: [{ type: "thiet_ky", count: 6, interval: 0.5 }, { type: "cung_no_tong", count: 6, interval: 0.5 }, { type: "ma_binh", count: 4, interval: 0.7 }] },
+          { waveType: "boss", warning: "⚠ CẢNH BÁO: NGUYÊN SOÁI LIÊU ĐÔNG MỞ TỔNG TIẾN CÔNG!",
+            groups: [{ type: "thiet_ky", count: 18, interval: 0.32 }, { type: "tuong_giac", count: 8, interval: 0.5 }, { boss: "boss_tong_tien_cong" }] },
+        ],
+      },
+      /* ============ LEVEL 10 – QUYẾT CHIẾN HOA LƯ ============ */
+      {
+        id: "quyet_chien_hoa_lu", order: 10, name: "Quyết chiến Hoa Lư",
+        mapName: "Cổng thành Hoa Lư",
+        description: "Trận cuối cùng ngay trước cổng kinh đô. Oán khí của cả 12 sứ quân tụ thành Ma Vương. Giữ được Hoa Lư là giữ được Đại Cồ Việt.",
+        background: "quyet_chien_hoa_lu",
+        difficulty: 10,
+        unlockCondition: { type: "stage_cleared", stageId: "tong_tien_cong" },
+        rewardGold: 1000, rewardExp: 600,
+        enabled: true,
+        path: [
+          { x: -40, y: 270 }, { x: 120, y: 270 }, { x: 120, y: 80 },
+          { x: 300, y: 80 }, { x: 300, y: 450 }, { x: 470, y: 450 },
+          { x: 470, y: 130 }, { x: 640, y: 130 }, { x: 640, y: 400 },
+          { x: 800, y: 400 }, { x: 800, y: 240 }, { x: 920, y: 240 },
+        ],
+        castle: { x: 930, y: 240 },
+        buildSpots: [
+          { x: 60, y: 160 }, { x: 210, y: 80 }, { x: 210, y: 380 },
+          { x: 390, y: 200 }, { x: 390, y: 450 }, { x: 560, y: 130 },
+          { x: 560, y: 320 }, { x: 720, y: 400 }, { x: 720, y: 240 },
+          { x: 870, y: 120 }, { x: 870, y: 350 },
+        ],
+        waves: [
+          { groups: [{ type: "thiet_ky", count: 16, interval: 0.35 }, { type: "cung_no_tong", count: 12, interval: 0.45 }] },
+          { waveType: "armor", warning: "⚠ TRỌNG GIÁP! Đội hình khiên thép tiến sát cổng thành.",
+            groups: [{ type: "truong_giap", count: 16, interval: 0.35, armorBonus: 8 }, { type: "khien_chan", count: 8, interval: 0.6, armorBonus: 8 }] },
+          { warning: "⚠ ÂM BINH! Ma binh và quỷ tốt tràn lên cùng thầy mo.",
+            groups: [{ type: "ma_binh", count: 10, interval: 0.5 }, { type: "quy_tot", count: 10, interval: 0.5 }, { type: "thay_mo", count: 4, interval: 1.0 }] },
+          { waveType: "elite", warning: "⚠ ĐỢT TINH NHUỆ CUỐI! Toàn bộ tướng lĩnh còn lại xuất trận.",
+            groups: [{ type: "tuong_giac", count: 6, interval: 0.75, eliteCount: 6 }, { type: "thiet_ky", count: 12, interval: 0.4 }] },
+          { waveType: "survival", surviveSeconds: 45, warning: "⚠ SỐNG SÓT 45 GIÂY! Giữ vững cho tới khi Ma Vương lộ diện.",
+            groups: [{ type: "thiet_ky", count: 6, interval: 0.45 }, { type: "cung_no_tong", count: 6, interval: 0.45 }, { type: "dieu_hau", count: 4, interval: 0.8 }] },
+          { waveType: "boss", warning: "⚠⚠ QUYẾT CHIẾN! MA VƯƠNG THẬP NHỊ SỨ QUÂN GIÁNG LÂM!",
+            groups: [{ type: "thiet_ky", count: 20, interval: 0.3 }, { type: "tuong_giac", count: 10, interval: 0.45 }, { type: "ma_binh", count: 10, interval: 0.4 }, { boss: "boss_quyet_chien" }] },
+        ],
+      },
     ];
     // Priority 5 (Score+Combo+3-Sao): gắn starConditions + targetTime THẬT
     // cho từng màn, tăng dần độ khó theo "order", thay vì để trống rồi
     // chỉ hiển thị UI giả (mục LXI - cấm "giả" tính năng).
     return stages.map((s0) => {
       const s = Object.assign({}, s0, { theme: s0.theme || STAGE_THEMES[s0.id] || "plain" });
+      const waves = expandStageWaves(s, STAGE_WAVE_TARGET[s.id]);
       return {
       ...s,
+      waves,
+      miniBossId: miniBossFor(s.order || 1),
       obstacles: s.obstacles || generateObstacles(s, 10 + (s.order || 1)),
-      targetTime: s.targetTime || Math.round(s.waves.length * 24 + (s.order || 1) * 6),
+      targetTime: s.targetTime || Math.round(waves.length * 22 + (s.order || 1) * 8),
       starConditions: s.starConditions || {
         oneStar: true,
         twoStarCastleHpPercent: 45,
@@ -1941,6 +2302,83 @@ const DataService = (() => {
     console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 10 (Giai đoạn 5): bật chế độ dựng hình 3D WebGL, có fallback 2D.");
   }
 
+  /* ---------------------------------------------------------
+     DI TRÚ 10 -> 11 (Giai đoạn 6)
+       - Công trình: maxLevel 5 -> 10 + mảng `tiers` (tên/ngoại hình/hiệu
+         ứng từng mốc tiến hoá). Giữ nguyên mọi chỉ số Admin đã sửa tay.
+       - Boss: thêm 2 Boss mới (Level 9, Level 10) + 3 Mini Boss.
+       - Màn chơi: thêm Level 9 và Level 10; mở rộng số Wave của các màn
+         cũ lên đúng chỉ tiêu (chỉ THÊM đợt, không xoá đợt viết tay).
+       - Cấu hình: cờ camera chiến trường + mini-map.
+     Nguyên tắc: CHỈ THÊM, không ghi đè dữ liệu người chơi/Admin đã có.
+     --------------------------------------------------------- */
+  function ensureGiaiDoan6Fields() {
+    /* --- Công trình: nâng lên 10 cấp + tiers --- */
+    replaceAll("buildings", list("buildings").map((b) => {
+      if (Array.isArray(b.tiers) && b.tiers.length === TIER_LEVELS.length && b.maxLevel === 10) return b;
+      // giữ nguyên chỉ số Admin đã chỉnh, chỉ bổ sung tiers + maxLevel
+      const names = TOWER_TIER_NAMES[b.id] || [];
+      const base = b.name || b.id;
+      const tiers = TIER_LEVELS.map((lv, i) => ({
+        level: lv,
+        name: names[i] || `${base} cấp ${lv}`,
+        label: TIER_LABEL[i],
+        fx: TIER_FX[i],
+        evolution: lv === 5 || lv === 10,
+        ultimate: lv === 10 ? `${(names[5] || base)} – đòn tối thượng: +35% sát thương, +15% tầm bắn.` : null,
+      }));
+      const patch = { tiers };
+      if (!b.maxLevel || b.maxLevel < 10) {
+        patch.maxLevel = 10;
+        // Số cấp gấp đôi -> giảm hệ số mỗi cấp để tổng sức mạnh không vỡ game.
+        if (b.upgradeDamageMult) patch.upgradeDamageMult = +(b.upgradeDamageMult * 0.62).toFixed(3);
+        if (b.upgradeRangeMult) patch.upgradeRangeMult = +(b.upgradeRangeMult * 0.62).toFixed(3);
+        if (b.upgradeAuraMult) patch.upgradeAuraMult = +(b.upgradeAuraMult * 0.62).toFixed(3);
+      }
+      return Object.assign({}, b, patch);
+    }));
+
+    /* --- Boss mới + Mini Boss --- */
+    const bosses = list("bosses");
+    const have = new Set(bosses.map((b) => b.id));
+    const added = defaultBosses().filter((b) => !have.has(b.id));
+    if (added.length) replaceAll("bosses", bosses.concat(added));
+
+    /* --- Màn chơi: thêm Level 9/10 + mở rộng Wave --- */
+    const defStages = defaultStages();
+    const defById = {};
+    for (const s of defStages) defById[s.id] = s;
+    const stages = list("stages");
+    const stageIds = new Set(stages.map((s) => s.id));
+    const patched = stages.map((s) => {
+      const target = STAGE_WAVE_TARGET[s.id];
+      const patch = {};
+      if (s.miniBossId === undefined) patch.miniBossId = miniBossFor(s.order || 1);
+      if (target && Array.isArray(s.waves) && s.waves.length < target) {
+        patch.waves = expandStageWaves(s, target);
+        patch.targetTime = Math.round(patch.waves.length * 22 + (s.order || 1) * 8);
+      }
+      return Object.keys(patch).length ? Object.assign({}, s, patch) : s;
+    });
+    const newStages = defStages.filter((s) => !stageIds.has(s.id));
+    replaceAll("stages", patched.concat(newStages));
+
+    /* --- Cấu hình: camera chiến trường --- */
+    const cfg = getConfig();
+    const feat = Object.assign({}, cfg.features);
+    if (feat.cameraEnabled === undefined) feat.cameraEnabled = true;
+    if (feat.miniMapEnabled === undefined) feat.miniMapEnabled = true;
+    setConfig({ features: feat });
+  }
+
+  function migrateSchemaV10ToV11() {
+    const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
+    if (currentVersion >= 11) return;
+    ensureGiaiDoan6Fields();
+    StorageService.set(KEYS.schemaVersion, 11);
+    console.info("[DataService] Đã di trú lên schemaVersion 11 (Giai đoạn 6): chiến dịch 10 Level, Wave có diễn biến, Mini Boss, công trình 10 cấp có tiến hoá ngoại hình, camera chiến trường + mini-map.");
+  }
+
   /* Di trú schemaVersion 8 -> 9 (Giai đoạn 4: combat/tower/hero/map/audio). */
   function migrateSchemaV8ToV9() {
     const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
@@ -1968,6 +2406,7 @@ const DataService = (() => {
     migrateSchemaV7ToV8();
     migrateSchemaV8ToV9();
     migrateSchemaV9ToV10();
+    migrateSchemaV10ToV11();
     if (!StorageService.has(KEYS.schemaVersion)) {
       StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
     }
@@ -2126,6 +2565,7 @@ const DataService = (() => {
     ensureExpandedCampaignContent(); // vá 2 màn/2 Boss/wave mới nếu snapshot import là bản backup cũ (v7)
     ensureGiaiDoan4Fields(); // vá toàn bộ field Giai đoạn 4 nếu snapshot import là bản backup cũ (v8)
     ensureGiaiDoan5Fields(); // vá cờ 3D của Giai đoạn 5 (v9 -> v10)
+    ensureGiaiDoan6Fields(); // vá 10 Level / Wave mới / công trình 10 cấp / camera (v10 -> v11)
     StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
   }
 
@@ -2168,6 +2608,8 @@ const DataService = (() => {
         starConditions: stage.starConditions,
         targetTime: stage.targetTime,
         specialMechanic: stage.specialMechanic,
+        // Giai đoạn 6: Mini Boss của màn (dùng cho nút "theo dõi Boss" và HUD)
+        miniBossId: stage.miniBossId || null,
         // Giai đoạn 4: địa hình/chướng ngại vật của bản đồ
         theme: stage.theme || "plain",
         obstacles: Array.isArray(stage.obstacles) ? stage.obstacles : [],

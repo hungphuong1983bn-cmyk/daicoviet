@@ -494,6 +494,14 @@ const Renderer3D = {
     g.userData.rings = rings;
     g.userData.level = 0;
 
+    // trang sức theo MỐC TIẾN HOÁ (Giai đoạn 6): được dựng lại mỗi khi
+    // công trình vượt mốc, đây chính là phần "ngoại hình thực sự thay đổi".
+    const tierOrn = new THREE.Group();
+    g.add(tierOrn);
+    g.userData.tierOrn = tierOrn;
+    g.userData.tierIndex = -1;
+    g.userData.baseCoreColor = new THREE.Color(color);
+
     // hào quang cho tháp hỗ trợ
     if (def.isSupport) {
       const aura = new THREE.Mesh(
@@ -511,15 +519,113 @@ const Renderer3D = {
   },
 
   _syncTowerLevelRings(mesh, tower) {
-    if (mesh.userData.level === tower.level) return;
+    if (mesh.userData.level === tower.level) {
+      this._animateTierOrnament(mesh);
+      return;
+    }
     mesh.userData.level = tower.level;
     const rings = mesh.userData.rings;
     this._disposeGroup(rings);
-    for (let i = 0; i < tower.level - 1; i++) {
+    const shown = Math.min(tower.level - 1, 5); // tối đa 5 vòng để không rối hình
+    for (let i = 0; i < shown; i++) {
       const r = new THREE.Mesh(new THREE.TorusGeometry(16 - i * 0.6, 1.3, 6, 18), this._mat(0xe8c873, { emissive: 0x2e2410 }));
       r.rotation.x = -Math.PI / 2;
       r.position.y = 13 + i * 4;
       rings.add(r);
+    }
+    this._syncTowerTier(mesh, tower);
+  },
+
+  /* Dựng lại ngoại hình theo MỐC TIẾN HOÁ (1/3/5/7/9/10).
+     Mỗi mốc thêm chi tiết thật sự khác nhau chứ không chỉ đổi màu:
+       1 cơ bản · 3 kim loại · 5 hào quang · 7 cột chiến tướng
+       9 huyền thoại (hào quang + hạt bay) · 10 tối thượng (diện mạo mới) */
+  _syncTowerTier(mesh, tower) {
+    if (typeof TowerTiers === "undefined") return;
+    const vis = TowerTiers.visual(tower.def, tower.level);
+    if (mesh.userData.tierIndex === vis.tierIndex) return;
+    mesh.userData.tierIndex = vis.tierIndex;
+
+    const orn = mesh.userData.tierOrn;
+    this._disposeGroup(orn);
+    mesh.scale.setScalar(vis.scale);
+
+    const accent = new THREE.Color(vis.accent);
+    const core = mesh.userData.core;
+    if (core && core.material) {
+      core.material.emissive.setRGB(accent.r * vis.glow * 0.55, accent.g * vis.glow * 0.55, accent.b * vis.glow * 0.55);
+    }
+
+    const i = vis.tierIndex;
+    const matAccent = this._mat(vis.accent, { emissive: vis.glow > 0.4 ? 0x241a08 : 0x000000 });
+
+    // Mốc 1+ (kim loại): đai bọc quanh thân
+    if (i >= 1) {
+      const band = new THREE.Mesh(new THREE.TorusGeometry(13.5, 1.8, 6, 20), matAccent);
+      band.rotation.x = -Math.PI / 2;
+      band.position.y = 20;
+      orn.add(band);
+    }
+    // Mốc 2+ (tiến hoá): bệ đá lớn hơn + 4 cột hoa văn Đại Cồ Việt
+    if (i >= 2) {
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+        const pil = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.8, 16, 6), matAccent);
+        pil.position.set(Math.cos(a) * 17, 10, Math.sin(a) * 17);
+        orn.add(pil);
+      }
+    }
+    // Mốc 3+ (chiến tướng): cờ hiệu dựng cao
+    if (i >= 3) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 40, 6), this._mat(0x4a3a28));
+      pole.position.set(-14, 34, -10);
+      const flag = new THREE.Mesh(new THREE.PlaneGeometry(18, 11), new THREE.MeshLambertMaterial({
+        color: new THREE.Color(vis.accent), side: THREE.DoubleSide,
+      }));
+      flag.position.set(-5, 48, -10);
+      orn.add(pole, flag);
+    }
+    // Mốc 4+ (huyền thoại): vòng hào quang quay dưới chân
+    if (i >= 4) {
+      const halo = new THREE.Mesh(
+        new THREE.TorusGeometry(24, 1.6, 6, 32),
+        new THREE.MeshLambertMaterial({ color: new THREE.Color(vis.accent), transparent: true, opacity: 0.55 })
+      );
+      halo.rotation.x = -Math.PI / 2;
+      halo.position.y = 3;
+      orn.add(halo);
+      mesh.userData.tierHalo = halo;
+    } else {
+      mesh.userData.tierHalo = null;
+    }
+    // Mốc 5 (TỐI THƯỢNG): vương miện tám cánh + lõi phát sáng bay lơ lửng
+    if (i >= 5) {
+      const crown = new THREE.Mesh(new THREE.ConeGeometry(16, 20, 8), matAccent);
+      crown.position.y = 52;
+      const orb = new THREE.Mesh(
+        new THREE.OctahedronGeometry(7, 0),
+        new THREE.MeshLambertMaterial({ color: 0xfff2c9, emissive: 0x8a6a10 })
+      );
+      orb.position.y = 70;
+      orn.add(crown, orb);
+      mesh.userData.tierOrb = orb;
+    } else {
+      mesh.userData.tierOrb = null;
+    }
+
+    orn.traverse((m) => { if (m.isMesh) m.castShadow = this.renderer.shadowMap.enabled; });
+  },
+
+  /* Chuyển động nhẹ của trang sức mốc cao. Chỉ chạy khi có vật thể, nên
+     không tốn gì ở các mốc thấp. */
+  _animateTierOrnament(mesh) {
+    const ud = mesh.userData;
+    if (!ud.tierHalo && !ud.tierOrb) return;
+    const t = performance.now() / 1000;
+    if (ud.tierHalo) ud.tierHalo.rotation.z = t * 0.9;
+    if (ud.tierOrb) {
+      ud.tierOrb.rotation.y = t * 1.6;
+      ud.tierOrb.position.y = 70 + Math.sin(t * 2) * 3;
     }
   },
 
@@ -709,10 +815,26 @@ const Renderer3D = {
       if (on) this._castleShield.scale.setScalar(1 + Math.sin(t * 3) * 0.03);
     }
 
-    // --- rung màn hình: lắc camera thay vì dịch ảnh ---
+    // --- camera chiến trường (pan/zoom) + rung màn hình ---
+    this._applyCamera();
+  },
+
+  /* Đặt camera 3D theo BattleCamera: giữ nguyên GÓC NHÌN gốc, chỉ dời tâm
+     ngắm và rút ngắn khoảng cách khi zoom. Nhờ giữ nguyên hướng nhìn nên
+     bố cục vẫn đẹp ở mọi mức zoom, và `pick()` (bắn tia) vẫn đúng tuyệt
+     đối vì nó dùng chính camera này. */
+  _applyCamera() {
     const shake = EffectManager.getShakeOffset();
-    this.camera.position.set(shake.x * 1.4, 640 + shake.y * 1.4, 690);
-    this.camera.lookAt(0, 0, 30);
+    let cx = this._W / 2, cy = this._H / 2, zoom = 1;
+    if (typeof BattleCamera !== "undefined" && BattleCamera.enabled()) {
+      cx = BattleCamera.x; cy = BattleCamera.y; zoom = BattleCamera.zoom;
+    }
+    // Điểm ngắm ĐÚNG BẰNG tâm camera -> giữa màn hình luôn là (cx, cy),
+    // nhờ vậy zoom/pan và thao tác chạm khớp nhau tuyệt đối.
+    const tx = this._wx(cx), tz = this._wz(cy);
+    const d = 1 / zoom;
+    this.camera.position.set(tx + shake.x * 1.4, 640 * d + shake.y * 1.4, tz + 690 * d);
+    this.camera.lookAt(tx, 0, tz);
   },
 
   /* Giải phóng phần thừa của pool khi số lượng vật thể giảm mạnh, tránh

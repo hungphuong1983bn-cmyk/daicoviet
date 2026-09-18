@@ -130,11 +130,17 @@ const Game = {
   },
 
   /* Bắt đầu một ván mới */
+  _initCamera() {
+    if (typeof BattleCamera === "undefined") return;
+    BattleCamera.init(GAME_DATA.config.canvasWidth, GAME_DATA.config.canvasHeight);
+  },
+
   newRun(levelId, heroId) {
     rebuildGameData();
     EffectManager.reset();
     const levelDef = GAME_DATA.levels[levelId];
     this.levelDef = levelDef;
+    this._initCamera();
     const config = GAME_DATA.config;
     const player = GameState.getPlayer();
     const chosenHero = heroId || (player && player.selectedHero) || null;
@@ -205,6 +211,7 @@ const Game = {
     const levelDef = GAME_DATA.levels[snapshot.levelId];
     if (!levelDef) return false; // Admin đã xoá màn này -> không khôi phục được
     this.levelDef = levelDef;
+    this._initCamera();
     const bonus = this._heroBonuses(snapshot.heroId);
     this.run = Object.assign({}, snapshot, {
       saveVersion: RUN_SAVE_VERSION,
@@ -388,6 +395,8 @@ const Game = {
     const r = this.run;
     const rewardMult = GAME_DATA.config.rewardMultiplier || 1;
     r.elapsedTime += dt;
+    // Camera bám Boss (nếu người chơi đã bật nút 👑)
+    if (typeof BattleCamera !== "undefined") BattleCamera.update(r);
     if (this._auraDirty) this.recomputeAuras();
 
     if (r.comboTimer > 0) {
@@ -782,6 +791,26 @@ const Game = {
   },
 
   /* ---------------- XÂY / NÂNG CẤP / BÁN ---------------- */
+  /* Giai đoạn 6: xử lý sau khi một công trình lên cấp.
+     Nếu vượt qua một MỐC TIẾN HOÁ (1/3/5/7/9/10) thì phát hiệu ứng tại chỗ
+     và báo cho UI mở animation tiến hoá. Hiệu ứng có giới hạn số hạt để
+     không tụt FPS trên máy yếu. */
+  _onTowerLevelUp(tower, fromLevel) {
+    if (typeof TowerTiers === "undefined") return;
+    const tier = TowerTiers.crossedTier(tower.def, fromLevel, tower.level);
+    if (!tier) return;
+    const vis = TowerTiers.visual(tower.def, tower.level);
+    EffectManager.spawnSpark(tower.x, tower.y, vis.accent, tier.evolution ? 22 : 12);
+    EffectManager.spawnBlast(tower.x, tower.y, tier.evolution ? 60 : 36, vis.accent);
+    if (tier.evolution) {
+      EffectManager.shake(4, 0.28);
+      this._sfx("evolve");
+      if (typeof UI !== "undefined" && UI.showEvolution) UI.showEvolution(tower, tier);
+    } else if (typeof UI !== "undefined" && UI.showToast) {
+      UI.showToast(`⬆ ${tower.displayName()} · Lv.${tower.level}`);
+    }
+  },
+
   towerAt(spotIndex) {
     return this.run ? this.run.towers.find((t) => t.spotIndex === spotIndex) : null;
   },
@@ -812,12 +841,14 @@ const Game = {
     if (tower.needsBranchChoice()) return false; // phải chọn nhánh trước
     const cost = tower.nextUpgradeCost();
     if (cost === null || r.gold < cost) return false;
+    const fromLevel = tower.level;
     tower.upgrade();
     tower.totalInvested += cost;
     r.gold -= cost;
     this._auraDirty = true;
     EffectManager.spawnSpark(tower.x, tower.y, "#e8c873", 10);
     this._sfx("upgrade");
+    this._onTowerLevelUp(tower, fromLevel);
     if (tower.level >= tower.maxLevel) {
       const unlocked = AchievementService.evaluate("TOWER_MAX_LEVEL", {});
       if (unlocked.length) UI.onAchievementsUnlocked(unlocked);
@@ -835,6 +866,7 @@ const Game = {
     if (!branch) return false;
     const cost = tower.nextUpgradeCost();
     if (cost === null || r.gold < cost) return false;
+    const fromLevel = tower.level;
     tower.branchId = branchId;
     tower.upgrade();
     tower.totalInvested += cost;
@@ -842,6 +874,7 @@ const Game = {
     this._auraDirty = true;
     EffectManager.spawnSpark(tower.x, tower.y, "#e8c873", 16);
     this._sfx("upgrade");
+    this._onTowerLevelUp(tower, fromLevel);
     this.persistRun();
     return true;
   },
@@ -974,6 +1007,7 @@ const Game = {
     if (!ctx) return;
     // Ưu tiên dựng hình 3D; hàm trả về false nếu chế độ 3D đang tắt hoặc
     // máy không hỗ trợ WebGL -> rơi xuống đường vẽ 2D bên dưới.
+    if (typeof UI !== "undefined" && UI.drawMinimap) UI.drawMinimap(this);
     if (typeof Renderer3D !== "undefined" && Renderer3D.render(this)) return;
     const w = GAME_DATA.config.canvasWidth;
     const h = GAME_DATA.config.canvasHeight;
@@ -982,6 +1016,11 @@ const Game = {
     const shake = EffectManager.getShakeOffset();
     ctx.save();
     if (shake.x || shake.y) ctx.translate(shake.x, shake.y);
+    // Camera chiến trường (chế độ vẽ 2D dự phòng): pan/zoom bằng biến đổi
+    // ma trận của context, gameplay vẫn chạy trên toạ độ bản đồ gốc.
+    if (typeof BattleCamera !== "undefined" && BattleCamera.enabled() && !BattleCamera.isDefault()) {
+      BattleCamera.apply(ctx);
+    }
 
     this._drawBackground(ctx, w, h);
     if (!this.levelDef) { ctx.restore(); return; }

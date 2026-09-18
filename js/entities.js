@@ -551,13 +551,17 @@ class Tower {
     const levelMult = 1 + (this.level - 1) * (this.def.upgradeDamageMult || 0);
     const branchMult = b && b.damageMult ? b.damageMult : 1;
     const auraMult = 1 + (this._aura.damage || 0) + (this._heroBuff.damage || 0);
-    return this.def.damage * levelMult * branchMult * auraMult;
+    // Giai đoạn 6: các MỐC TIẾN HOÁ (1/3/5/7/9/10) cộng thêm một bước nhảy
+    // sức mạnh, ngoài mức tăng đều mỗi cấp.
+    const tierMult = (typeof TowerTiers !== "undefined") ? TowerTiers.powerMultiplier(this.def, this.level) : 1;
+    return this.def.damage * levelMult * branchMult * auraMult * tierMult;
   }
   effectiveRange() {
     const b = this.branch();
     const levelMult = 1 + (this.level - 1) * (this.def.upgradeRangeMult || 0);
     const branchMult = b && b.rangeMult ? b.rangeMult : 1;
-    const auraMult = 1 + (this._aura.range || 0) + (this._heroBuff.range || 0);
+    const tierMult = (typeof TowerTiers !== "undefined") ? TowerTiers.rangeMultiplier(this.def, this.level) : 1;
+    const auraMult = (1 + (this._aura.range || 0) + (this._heroBuff.range || 0)) * tierMult;
     return this.def.range * levelMult * branchMult * auraMult;
   }
   effectiveFireRate() {
@@ -611,9 +615,32 @@ class Tower {
   }
 
   /* ---------- Nâng cấp / bán ---------- */
+  /* Tên hiển thị theo MỐC TIẾN HOÁ hiện tại (vd. "THẦN CUNG HOA LƯ"). */
+  displayName() {
+    return (typeof TowerTiers !== "undefined")
+      ? TowerTiers.nameAt(this.def, this.level)
+      : (this.def.name || "");
+  }
+
+  /* Mốc tiến hoá hiện tại / kế tiếp. */
+  tier() {
+    return (typeof TowerTiers !== "undefined") ? TowerTiers.at(this.def, this.level) : null;
+  }
+  nextTier() {
+    return (typeof TowerTiers !== "undefined") ? TowerTiers.next(this.def, this.level) : null;
+  }
+
   nextUpgradeCost() {
     if (this.level >= this.maxLevel) return null;
-    return Math.round((this.def.upgradeCost || 0) * this.level);
+    // Đường giá cho 10 cấp: tăng dần đều, riêng hai mốc TIẾN HOÁ (5 và 10)
+    // đắt hơn hẳn để việc lên mốc thật sự là một quyết định.
+    const target = this.level + 1;
+    // Hệ số theo MỐC của cấp đích: giá luôn tăng đều, hai mốc tiến hoá
+    // (Lv5, Lv10) đắt hẳn lên nhưng không bao giờ rẻ hơn cấp trước.
+    const tierFactor = [1, 1.15, 1.45, 1.7, 2.0, 2.6];
+    const ti = (typeof TowerTiers !== "undefined") ? TowerTiers.indexOf(this.def, target) : 0;
+    const cost = (this.def.upgradeCost || 0) * (1 + (this.level - 1) * 0.85) * (tierFactor[ti] || 1);
+    return Math.round(cost);
   }
   upgrade() {
     if (this.level >= this.maxLevel) return false;
@@ -702,6 +729,30 @@ class Tower {
     ctx.strokeStyle = disabled ? "#888888" : this.def.color;
     ctx.stroke();
 
+    // Vòng ngoài theo MỐC TIẾN HOÁ - ngoại hình 2D đổi thật theo cấp
+    if (!disabled && typeof TowerTiers !== "undefined") {
+      const vis = TowerTiers.visual(this.def, this.level);
+      if (vis.tierIndex > 0) {
+        ctx.beginPath();
+        ctx.arc(this.x, y, 20 + vis.tierIndex * 1.6, 0, Math.PI * 2);
+        ctx.strokeStyle = vis.accent;
+        ctx.lineWidth = 1 + vis.tierIndex * 0.35;
+        ctx.globalAlpha = 0.45 + vis.glow * 0.45;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      if (vis.hasAura) {
+        const pulse = 0.5 + 0.5 * Math.sin(this._animTime * 2.4);
+        ctx.beginPath();
+        ctx.arc(this.x, y, 26 + vis.tierIndex * 1.2 + pulse * 2, 0, Math.PI * 2);
+        ctx.strokeStyle = vis.accent;
+        ctx.globalAlpha = 0.10 + vis.glow * 0.18;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+
     ctx.font = "22px serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -714,12 +765,18 @@ class Tower {
       ctx.fillText(b.icon || "★", this.x + 15, y - 14);
     }
     if (this.level > 1) {
-      const n = Math.min(this.level, 5);
-      for (let i = 0; i < n; i++) {
-        ctx.beginPath();
-        ctx.arc(this.x - (n - 1) * 3.5 + i * 7, y + 23, 2.2, 0, Math.PI * 2);
-        ctx.fillStyle = "#e8c873";
-        ctx.fill();
+      // dấu cấp: 2 hàng, tối đa 10 cấp, hàng dưới là các cấp từ 6 trở lên
+      const vis = (typeof TowerTiers !== "undefined") ? TowerTiers.visual(this.def, this.level) : null;
+      const col = vis ? vis.accent : "#e8c873";
+      const total = Math.min(this.level, 10);
+      for (let row = 0; row < 2; row++) {
+        const n = row === 0 ? Math.min(total, 5) : Math.max(0, total - 5);
+        for (let i = 0; i < n; i++) {
+          ctx.beginPath();
+          ctx.arc(this.x - (n - 1) * 3.5 + i * 7, y + 23 + row * 6, 2.2, 0, Math.PI * 2);
+          ctx.fillStyle = col;
+          ctx.fill();
+        }
       }
     }
     if (disabled) {

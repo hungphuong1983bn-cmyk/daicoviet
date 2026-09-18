@@ -57,6 +57,9 @@ const SoundManager = (() => {
     button:   { type: "sine",     freq: 480, freqTo: 620,  dur: 0.05, gain: 0.08 },
     wave:     { type: "sawtooth", freq: 200, freqTo: 320,  dur: 0.40, gain: 0.16 },
     coin:     { type: "sine",     freq: 980, freqTo: 1320, dur: 0.09, gain: 0.10 },
+    /* Giai đoạn 6 */
+    evolve:   { type: "sine",     freq: 392, freqTo: 1568, dur: 0.75, gain: 0.22, chord: [523, 784] },
+    miniboss: { type: "sawtooth", freq: 140, freqTo: 80,   dur: 0.50, gain: 0.20 },
   };
 
   /* Nhạc nền: mỗi theme một thang ngũ cung + tempo + bè trầm riêng, gợi

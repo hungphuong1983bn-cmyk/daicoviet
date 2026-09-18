@@ -57,6 +57,8 @@ const UI = {
       btnToggleDamageNumbers: $("btn-toggle-damage-numbers"),
       btnToggle3d: $("btn-toggle-3d"),
       btnToggleShadows: $("btn-toggle-shadows"),
+      btnToggleCamera: $("btn-toggle-camera"),
+      btnToggleMinimap: $("btn-toggle-minimap"),
       btnResetProgress: $("btn-reset-progress"),
 
       levelList: $("level-list"),
@@ -101,6 +103,47 @@ const UI = {
       towerPicker: $("tower-picker"),
       toastContainer: $("toast-container"),
       tooltip: $("tooltip"),
+
+      hudTime: $("hud-time"),
+      hudBossFlag: $("hud-boss-flag"),
+
+      /* Thành Hoa Lư (hub) */
+      hubGold: $("hub-gold"),
+      hubExp: $("hub-exp"),
+      hubStars: $("hub-stars"),
+      btnMenuArmy: $("btn-menu-army"),
+      btnMenuBuildings: $("btn-menu-buildings"),
+
+      /* Kho tra cứu */
+      codex: $("screen-codex"),
+      codexTitle: $("codex-title"),
+      codexSub: $("codex-sub"),
+      codexList: $("codex-list"),
+      btnCodexBack: $("btn-codex-back"),
+
+      /* Bản đồ chiến dịch */
+      campaignProgress: $("campaign-progress"),
+
+      /* Camera chiến trường */
+      camControls: $("cam-controls"),
+      btnCamIn: $("btn-cam-in"),
+      btnCamOut: $("btn-cam-out"),
+      btnCamCenter: $("btn-cam-center"),
+      btnCamBoss: $("btn-cam-boss"),
+      minimapWrap: $("minimap-wrap"),
+      minimap: $("minimap"),
+
+      /* Thanh điều khiển dưới */
+      btnBuild: $("btn-build"),
+      btnPauseRestart: $("btn-pause-restart"),
+
+      /* Animation tiến hoá */
+      evoOverlay: $("evolution-overlay"),
+      evoIcon: $("evo-icon"),
+      evoName: $("evo-name"),
+      evoLevel: $("evo-level"),
+      evoStats: $("evo-stats"),
+      evoUltimate: $("evo-ultimate"),
 
       overlayResult: $("overlay-result"),
       overlayTitle: $("overlay-title"),
@@ -182,6 +225,23 @@ const UI = {
         this._refreshSettingsButtons();
       });
     }
+    if (e.btnToggleCamera) e.btnToggleCamera.addEventListener("click", () => {
+      const cfg = DataService.getConfig();
+      const on = !(cfg.features && cfg.features.cameraEnabled === false);
+      DataService.setConfig({ features: { cameraEnabled: !on } });
+      rebuildGameData();
+      if (!on === false) BattleCamera.reset();   // tắt camera -> đưa về mặc định
+      this._refreshSettingsButtons();
+      if (Game.render) Game.render();
+    });
+    if (e.btnToggleMinimap) e.btnToggleMinimap.addEventListener("click", () => {
+      const cfg = DataService.getConfig();
+      const on = !(cfg.features && cfg.features.miniMapEnabled === false);
+      DataService.setConfig({ features: { miniMapEnabled: !on } });
+      rebuildGameData();
+      this._refreshSettingsButtons();
+    });
+
     e.btnResetProgress.addEventListener("click", () => {
       if (confirm("Xoá toàn bộ tiến trình đã lưu?")) {
         GameState.resetProgress();
@@ -222,8 +282,27 @@ const UI = {
       if (this._nextStageId) this._startStage(this._nextStageId, Game.run.heroId);
     });
     e.btnResultMenu.addEventListener("click", () => this.exitToMenu());
+    if (e.btnPauseRestart) e.btnPauseRestart.addEventListener("click", () => {
+      this.closePause();
+      this._startStage(Game.run.levelId, Game.run.heroId);
+    });
 
-    e.canvas.addEventListener("click", (ev) => this._handleCanvasClick(ev));
+    /* Thành Hoa Lư: 2 ô tra cứu mới */
+    if (e.btnMenuArmy) e.btnMenuArmy.addEventListener("click", () => this.showCodex("enemies"));
+    if (e.btnMenuBuildings) e.btnMenuBuildings.addEventListener("click", () => this.showCodex("buildings"));
+    if (e.btnCodexBack) e.btnCodexBack.addEventListener("click", () => this.showScreen("menu"));
+
+    /* Nút 🏹 trên thanh điều khiển: mở nhanh bảng xây ở ô trống đầu tiên */
+    if (e.btnBuild) e.btnBuild.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      this._openFirstFreeSpot();
+    });
+
+    /* Camera chiến trường: kéo/pinch/lăn chuột trực tiếp trên canvas.
+       Chỉ khi vượt ngưỡng kéo mới tính là di chuyển camera, còn lại vẫn là
+       một cú chạm chọn ô đất như trước -> không phá thao tác cũ. */
+    this._bindCanvasPointer();
+    this._bindCameraButtons();
     document.addEventListener("click", (ev) => {
       if (!e.towerPicker.contains(ev.target) && ev.target !== e.canvas) this._hideTowerPicker();
     });
@@ -333,10 +412,10 @@ const UI = {
 
   /* ---------------- ĐIỀU HƯỚNG MÀN HÌNH ---------------- */
   showScreen(name) {
-    for (const key of ["splash", "menu", "guide", "settings", "levels", "heroes", "quests", "achievements", "game"]) {
+    for (const key of ["splash", "menu", "guide", "settings", "levels", "heroes", "quests", "achievements", "codex", "game"]) {
       if (this.els[key]) this.els[key].classList.toggle("active", key === name);
     }
-    if (name === "menu") this._refreshMenuButtons();
+    if (name === "menu") { this._refreshMenuButtons(); this._refreshHubPurse(); }
     if (name === "settings") this._refreshSettingsButtons();
     if (name === "levels") this._renderLevelList();
     if (name === "heroes") this._renderHeroList();
@@ -346,6 +425,15 @@ const UI = {
 
   _refreshMenuButtons() {
     this.els.btnContinue.disabled = !GameState.hasSavedGame();
+  },
+
+  /* Túi tiền + tổng sao hiển thị ngay ở Thành Hoa Lư. */
+  _refreshHubPurse() {
+    const p = GameState.getPlayer() || {};
+    const stars = Object.values(GameState.progress.stageStars || {}).reduce((a, b) => a + (b || 0), 0);
+    if (this.els.hubGold) this.els.hubGold.textContent = (p.gold || 0).toLocaleString("vi-VN");
+    if (this.els.hubExp) this.els.hubExp.textContent = (p.exp || 0).toLocaleString("vi-VN");
+    if (this.els.hubStars) this.els.hubStars.textContent = stars + "/30";
   },
 
   _refreshSettingsButtons() {
@@ -362,6 +450,8 @@ const UI = {
     setBtn(this.els.btnToggleDamageNumbers, !(cfg.features && cfg.features.showDamageNumbers === false));
     setBtn(this.els.btnToggle3d, !(cfg.features && cfg.features.render3dEnabled === false));
     setBtn(this.els.btnToggleShadows, !(cfg.features && cfg.features.shadows3d === false));
+    setBtn(this.els.btnToggleCamera, !(cfg.features && cfg.features.cameraEnabled === false));
+    setBtn(this.els.btnToggleMinimap, !(cfg.features && cfg.features.miniMapEnabled === false));
   },
 
   _refreshPauseButtons() {
@@ -370,48 +460,121 @@ const UI = {
     if (this.els.btnPauseSfx) this.els.btnPauseSfx.textContent = "🔊 Hiệu ứng: " + (st.sfx !== false ? "Bật" : "Tắt");
   },
 
-  /* ---------------- CHỌN MÀN CHƠI ---------------- */
+  /* ---------------- BẢN ĐỒ CHIẾN DỊCH ----------------
+     Thay danh sách phẳng bằng một tuyến đường dọc Hoa Lư -> Level 10,
+     mỗi nút hiện số sao, Boss, phần thưởng và trạng thái khoá/mở.
+     Bố cục dọc nên cuộn tốt trên màn hình 9:16. */
   _renderLevelList() {
     rebuildGameData();
     const stages = Object.values(GAME_DATA.levels)
       .filter((s) => s.enabled !== false)
       .sort((a, b) => (a.order || 0) - (b.order || 0));
     const unlocked = GameState.progress.unlockedLevels || [];
+    const starsMap = GameState.progress.stageStars || {};
     const container = this.els.levelList;
     container.innerHTML = "";
-    const THEME_NAME = { karst: "Núi đá vôi", citadel: "Thành luỹ", river: "Sông nước", mountain: "Ải núi", field: "Đồng bằng", plain: "Đồng bằng" };
-    for (const stage of stages) {
+
+    const totalStars = stages.reduce((a, st) => a + (starsMap[st.id] || 0), 0);
+    const clearedCount = stages.filter((st) => (starsMap[st.id] || 0) > 0).length;
+    if (this.els.campaignProgress) {
+      this.els.campaignProgress.textContent =
+        `Đã chinh phục ${clearedCount}/${stages.length} màn · ⭐ ${totalStars}/${stages.length * 3}`;
+    }
+
+    stages.forEach((stage, i) => {
       const isUnlocked = unlocked.includes(stage.id);
-      const best = (GameState.progress.bestWave || {})[stage.id] || 0;
-      const bestStars = (GameState.progress.stageStars || {})[stage.id] || 0;
-      const bestScore = (GameState.progress.bestScore || {})[stage.id] || 0;
-      const starsLine = bestStars > 0
-        ? `<span>${"⭐".repeat(bestStars)}${"☆".repeat(3 - bestStars)} · ${bestScore.toLocaleString("vi-VN")} điểm</span>`
-        : "";
-      const bossWaves = (stage.waves || []).filter((w) => w.waveType === "boss" || (w.groups || []).some((g) => g.boss)).length;
-      const card = document.createElement("div");
-      card.className = "level-card" + (isUnlocked ? "" : " locked");
-      card.innerHTML = `
-        <div class="level-card-head">
-          <span class="level-name">${stage.name}</span>
-          <span class="level-diff" data-tip="Độ khó ${stage.difficulty || 1}/8">${"★".repeat(stage.difficulty || 1)}</span>
-        </div>
-        <p class="level-desc">${stage.description || ""}</p>
-        <div class="level-meta">
-          <span>${stage.waves.length} đợt${bossWaves ? " · " + bossWaves + " Boss" : ""}</span>
-          <span>🗺 ${THEME_NAME[stage.theme] || "Đồng bằng"}</span>
-          <span>Tốt nhất: ${best}/${stage.waves.length}</span>
-          ${starsLine}
-        </div>
-        ${isUnlocked ? "" : '<div class="level-lock">🔒 Cần hoàn thành màn trước</div>'}
-      `;
+      const stars = starsMap[stage.id] || 0;
+
+      if (i > 0) {
+        const link = document.createElement("div");
+        link.className = "campaign-link" + (isUnlocked ? "" : " locked");
+        container.appendChild(link);
+      }
+
+      const bossIds = [];
+      for (const w of stage.waves || []) {
+        for (const g of w.groups || []) if (g.boss) bossIds.push(g.boss);
+      }
+      const bossNames = bossIds
+        .map((id) => (GAME_DATA.bosses[id] ? GAME_DATA.bosses[id].name : null))
+        .filter(Boolean);
+
+      const node = document.createElement("button");
+      node.type = "button";
+      node.className = "campaign-node" + (isUnlocked ? "" : " locked") + (stars > 0 ? " cleared" : "");
+      node.innerHTML = `
+        <span class="campaign-badge">${isUnlocked ? (stage.order || i + 1) : "🔒"}</span>
+        <span class="campaign-body">
+          <span class="campaign-name">${stage.name}</span>
+          <span class="campaign-meta">
+            ⚔️ ${(stage.waves || []).length} đợt${bossNames.length ? " · 👹 " + bossNames.join(", ") : ""}<br>
+            🎁 ${stage.rewardGold || 0} 🪙 · ${stage.rewardExp || 0} EXP
+            ${isUnlocked ? "" : " · Cần hoàn thành màn trước"}
+          </span>
+        </span>
+        <span class="campaign-stars">${[0, 1, 2].map((k) => `<span class="${k < stars ? "" : "dim"}">★</span>`).join("")}</span>`;
+
       if (isUnlocked) {
-        card.addEventListener("click", () => {
+        node.addEventListener("click", () => {
           this._pendingStageId = stage.id;
           this.showScreen("heroes");
         });
+      } else {
+        node.disabled = true;
       }
-      container.appendChild(card);
+      container.appendChild(node);
+    });
+  },
+
+  /* ---------------- KHO TRA CỨU (Quân / Công trình) ---------------- */
+  showCodex(kind) {
+    rebuildGameData();
+    this._codexKind = kind;
+    this.showScreen("codex");
+    const list = this.els.codexList;
+    if (!list) return;
+    list.innerHTML = "";
+
+    if (kind === "buildings") {
+      if (this.els.codexTitle) this.els.codexTitle.textContent = "🏹 Công trình";
+      if (this.els.codexSub) this.els.codexSub.textContent = "Mỗi công trình có 10 cấp và 6 mốc tiến hoá ngoại hình.";
+      for (const id in GAME_DATA.towerTypes) {
+        const def = GAME_DATA.towerTypes[id];
+        const tiers = (typeof TowerTiers !== "undefined") ? TowerTiers.list(def) : [];
+        const card = document.createElement("div");
+        card.className = "codex-card";
+        card.innerHTML = `
+          <span class="codex-ico">${def.icon || "🏯"}</span>
+          <span class="codex-body">
+            <span class="codex-name">${def.name}</span>
+            <span class="codex-desc">${def.description || ""}</span>
+            <span class="codex-stats">💰 ${def.cost} · ⚔️ ${def.damage} · 🎯 ${def.range} · ⏱ ${def.fireRate}/s · Tối đa Lv.${def.maxLevel || 10}</span>
+            <span class="codex-tiers">${tiers.map((t) => `Lv${t.level} · ${t.name}`).join(" → ")}</span>
+          </span>`;
+        list.appendChild(card);
+      }
+    } else {
+      if (this.els.codexTitle) this.els.codexTitle.textContent = "⚔️ Quân địch";
+      if (this.els.codexSub) this.els.codexSub.textContent = "Nhận mặt từng loại quân để chọn đúng công trình khắc chế.";
+      const BEHAVIOR = {
+        normal: "Đi thẳng", dash: "Xung phong tăng tốc", armored: "Giáp dày, kháng chí mạng",
+        flying: "Bay thẳng tới thành", healer: "Hồi máu đồng đội", shield: "Có khiên hấp thụ",
+        regen: "Tự hồi máu", splitter: "Tách đôi khi chết", boss: "Boss nhiều giai đoạn",
+      };
+      const all = Object.values(GAME_DATA.enemyTypes).sort((a, b) => (a.boss ? 1 : 0) - (b.boss ? 1 : 0));
+      for (const def of all) {
+        const card = document.createElement("div");
+        card.className = "codex-card";
+        card.innerHTML = `
+          <span class="codex-ico">${def.icon || "🛡"}</span>
+          <span class="codex-body">
+            <span class="codex-name">${def.boss ? "👹 " : ""}${def.name}</span>
+            <span class="codex-desc">${def.description || BEHAVIOR[def.behavior] || ""}</span>
+            <span class="codex-stats">❤️ ${def.hp} · 🏃 ${def.speed} · 🛡 ${def.defense || 0} · 🔮 ${def.magicResist || 0}% · 🪙 ${def.reward}</span>
+            <span class="codex-tiers">Hành vi: ${BEHAVIOR[def.behavior] || "Đi thẳng"}</span>
+          </span>`;
+        list.appendChild(card);
+      }
     }
   },
 
@@ -732,6 +895,16 @@ const UI = {
       ? (r.waveIsSurvival ? `Sống sót ${Math.ceil(Math.max(0, r.waveSurviveTimer))}s` : "Đang đánh…")
       : (nextIsBoss ? "👹 Bắt đầu đợt BOSS" : "Bắt đầu đợt (Space)");
     this.els.btnStartWave.disabled = r.waveInProgress || r.status !== "playing";
+    // ⏱ thời gian trận + cờ Boss + nút theo dõi Boss
+    if (this.els.hudTime) {
+      const t = Math.max(0, Math.floor(r.elapsedTime || 0));
+      this.els.hudTime.textContent = Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0");
+    }
+    const bossOnField = (r.enemies || []).some((x) => x.isBoss);
+    if (this.els.hudBossFlag) this.els.hudBossFlag.classList.toggle("hidden", !bossOnField);
+    if (this.els.btnCamBoss) this.els.btnCamBoss.classList.toggle("hidden", !bossOnField);
+    this._syncCamButtons();
+
     this._updateBossBar();
     this._updateComboBadge(r);
 
@@ -914,17 +1087,23 @@ const UI = {
     };
   },
 
-  _handleCanvasClick(ev) {
+  /* Chạm/click lên chiến trường (đã loại trừ thao tác kéo camera). */
+  _handleCanvasTap(clientX, clientY) {
     if (!Game.run || Game.run.status !== "playing") return;
-    let p = this._canvasPoint(ev);
-    // Ở chế độ 3D, điểm trên canvas phải được BẮN TIA xuống mặt đất để ra
-    // đúng toạ độ bản đồ (2D) mà toàn bộ logic game đang dùng.
-    if (typeof Renderer3D !== "undefined" && Renderer3D.active()) p = Renderer3D.pick(p.x, p.y);
+    let p = this._canvasPoint({ clientX, clientY });
+    if (typeof Renderer3D !== "undefined" && Renderer3D.active()) {
+      // 3D: bắn tia xuống mặt đất. Camera 3D đã bám theo BattleCamera nên
+      // kết quả tự động đúng ở mọi mức zoom / vị trí kéo.
+      p = Renderer3D.pick(p.x, p.y);
+    } else if (typeof BattleCamera !== "undefined" && BattleCamera.enabled()) {
+      // 2D: đảo ngược biến đổi pan/zoom của context.
+      p = BattleCamera.screenToMap(p.x, p.y);
+    }
     const spotIndex = Game.hitTestBuildSpot(p.x, p.y);
     if (spotIndex === -1) { this._hideTowerPicker(); return; }
     const occupied = Game.run.towers.some((t) => t.spotIndex === spotIndex);
-    if (occupied) this._showUpgradePanel(spotIndex, ev.clientX, ev.clientY);
-    else this._showTowerPicker(spotIndex, ev.clientX, ev.clientY);
+    if (occupied) this._showUpgradePanel(spotIndex, clientX, clientY);
+    else this._showTowerPicker(spotIndex, clientX, clientY);
   },
 
   _positionPicker(clientX, clientY) {
@@ -1037,7 +1216,7 @@ const UI = {
 
     picker.innerHTML = `
       <div class="picker-header">
-        <span>${tower.def.icon} ${tower.def.name} · Lv${tower.level}/${tower.maxLevel}${branch ? " · " + branch.icon + " " + branch.name : ""}</span>
+        <span>${tower.def.icon} ${tower.displayName()} · Lv${tower.level}/${tower.maxLevel}${branch ? " · " + branch.icon + " " + branch.name : ""}</span>
         <button class="picker-close" data-act="close-picker">✕</button>
       </div>
       <div class="upgrade-panel">
@@ -1082,7 +1261,12 @@ const UI = {
     } else {
       const btn = document.createElement("button");
       btn.className = "btn btn-small btn-primary";
-      btn.textContent = `⬆ Nâng cấp Lv${tower.level + 1} (${cost} 🪙)`;
+      const nt = tower.nextTier();
+      const isEvo = nt && nt.evolution && nt.level === tower.level + 1;
+      btn.textContent = isEvo
+        ? `✨ TIẾN HOÁ → ${nt.name} (${cost} 🪙)`
+        : `⬆ Nâng cấp Lv${tower.level + 1} (${cost} 🪙)`;
+      if (isEvo) btn.setAttribute("data-tip", `Mốc tiến hoá: đổi ngoại hình, hiệu ứng và tăng mạnh chỉ số.`);
       btn.disabled = Game.run.gold < cost;
       btn.addEventListener("click", (evt) => {
         evt.stopPropagation();
@@ -1110,6 +1294,267 @@ const UI = {
     }
 
     this._positionPicker(clientX, clientY);
+  },
+
+
+  /* =========================================================
+     CAMERA CHIẾN TRƯỜNG (Giai đoạn 6)
+     - PC     : giữ chuột trái kéo để pan, lăn chuột để zoom.
+     - Mobile : 1 ngón kéo để pan, 2 ngón pinch để zoom.
+     - Chạm ngắn (< ngưỡng kéo) vẫn là thao tác CHỌN Ô ĐẤT như cũ.
+     Toàn bộ listener được gắn MỘT LẦN trong init() -> không rò bộ nhớ.
+     ========================================================= */
+  DRAG_THRESHOLD: 8,   // px trên hệ toạ độ canvas 960x540
+
+  _bindCanvasPointer() {
+    const canvas = this.els.canvas;
+    if (!canvas) return;
+    const pointers = new Map();     // pointerId -> {x, y} theo toạ độ canvas
+    let dragging = false;
+    let moved = 0;
+    let last = null;
+    let pinchDist = 0;
+
+    const midpoint = () => {
+      const pts = [...pointers.values()];
+      if (!pts.length) return { x: 0, y: 0 };
+      let sx = 0, sy = 0;
+      for (const p of pts) { sx += p.x; sy += p.y; }
+      return { x: sx / pts.length, y: sy / pts.length };
+    };
+    const spread = () => {
+      const pts = [...pointers.values()];
+      return pts.length >= 2 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0;
+    };
+
+    canvas.addEventListener("pointerdown", (ev) => {
+      const p = this._canvasPoint(ev);
+      pointers.set(ev.pointerId, p);
+      try { canvas.setPointerCapture(ev.pointerId); } catch (e) { /* bỏ qua */ }
+      if (pointers.size === 1) {
+        dragging = true; moved = 0; last = p;
+        this._tapClient = { x: ev.clientX, y: ev.clientY };
+      } else if (pointers.size === 2) {
+        pinchDist = spread();
+        dragging = false;              // chuyển sang chế độ pinch
+      }
+    });
+
+    canvas.addEventListener("pointermove", (ev) => {
+      if (!pointers.has(ev.pointerId)) return;
+      const p = this._canvasPoint(ev);
+      pointers.set(ev.pointerId, p);
+
+      if (pointers.size >= 2) {
+        const d = spread();
+        if (pinchDist > 4 && d > 4) {
+          const m = midpoint();
+          BattleCamera.zoomAt(d / pinchDist, m.x, m.y);
+          this._syncCamButtons();
+        }
+        pinchDist = d;
+        return;
+      }
+      if (!dragging || !last) return;
+      const dx = p.x - last.x, dy = p.y - last.y;
+      moved += Math.hypot(dx, dy);
+      if (moved > this.DRAG_THRESHOLD) {
+        BattleCamera.panByScreen(dx, dy);
+        this._syncCamButtons();
+        this._hideTowerPicker();
+        // khi 3D tắt, phải vẽ lại ngay lúc game đang tạm dừng
+        if (!Game.run || Game.run.paused) Game.render();
+      }
+      last = p;
+    });
+
+    const endPointer = (ev) => {
+      if (!pointers.has(ev.pointerId)) return;
+      pointers.delete(ev.pointerId);
+      try { canvas.releasePointerCapture(ev.pointerId); } catch (e) { /* bỏ qua */ }
+      if (pointers.size === 0) {
+        // Chạm ngắn, không kéo -> coi như một cú click chọn ô đất.
+        if (dragging && moved <= this.DRAG_THRESHOLD && this._tapClient) {
+          this._handleCanvasTap(this._tapClient.x, this._tapClient.y);
+        }
+        dragging = false; last = null; pinchDist = 0;
+      } else if (pointers.size === 1) {
+        last = [...pointers.values()][0];
+        dragging = true; moved = this.DRAG_THRESHOLD + 1; // không biến pinch thành tap
+      }
+    };
+    canvas.addEventListener("pointerup", endPointer);
+    canvas.addEventListener("pointercancel", endPointer);
+
+    canvas.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      const p = this._canvasPoint(ev);
+      BattleCamera.zoomAt(ev.deltaY < 0 ? 1.18 : 1 / 1.18, p.x, p.y);
+      this._syncCamButtons();
+      if (!Game.run || Game.run.paused) Game.render();
+    }, { passive: false });
+
+    canvas.addEventListener("contextmenu", (ev) => ev.preventDefault());
+  },
+
+  _bindCameraButtons() {
+    const e = this.els;
+    const redraw = () => { this._syncCamButtons(); if (!Game.run || Game.run.paused) Game.render(); };
+    if (e.btnCamIn) e.btnCamIn.addEventListener("click", (ev) => { ev.stopPropagation(); BattleCamera.zoomStep(1); redraw(); });
+    if (e.btnCamOut) e.btnCamOut.addEventListener("click", (ev) => { ev.stopPropagation(); BattleCamera.zoomStep(-1); redraw(); });
+    if (e.btnCamCenter) e.btnCamCenter.addEventListener("click", (ev) => { ev.stopPropagation(); BattleCamera.reset(); redraw(); });
+    if (e.btnCamBoss) e.btnCamBoss.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const boss = Game.run ? (Game.run.enemies || []).find((x) => x.isBoss) : null;
+      if (!boss) { this.showToast("Chưa có Boss trên chiến trường."); return; }
+      const on = BattleCamera.toggleFollowBoss(boss.def ? boss.def.id : "any");
+      this.showToast(on ? "👑 Đang theo dõi Boss" : "Đã tắt theo dõi Boss");
+      redraw();
+    });
+    if (e.minimapWrap) {
+      const jump = (ev) => {
+        ev.stopPropagation();
+        const rect = e.minimap.getBoundingClientRect();
+        const cx = ((ev.clientX !== undefined ? ev.clientX : 0) - rect.left) / rect.width;
+        const cy = ((ev.clientY !== undefined ? ev.clientY : 0) - rect.top) / rect.height;
+        BattleCamera.centerOn(cx * BattleCamera.W, cy * BattleCamera.H);
+        this._syncCamButtons();
+        if (!Game.run || Game.run.paused) Game.render();
+      };
+      e.minimapWrap.addEventListener("click", jump);
+    }
+  },
+
+  _syncCamButtons() {
+    const e = this.els;
+    if (e.btnCamIn) e.btnCamIn.disabled = BattleCamera.zoom >= BattleCamera.MAX_ZOOM - 0.001;
+    if (e.btnCamOut) e.btnCamOut.disabled = BattleCamera.zoom <= BattleCamera.MIN_ZOOM + 0.001;
+    if (e.btnCamBoss) e.btnCamBoss.classList.toggle("on", BattleCamera.followingBoss());
+  },
+
+  /* ---------------- MINI-MAP ----------------
+     Vẽ lại tối đa ~12 lần/giây (không phải mỗi khung hình) để không ảnh
+     hưởng FPS. Canvas nhỏ 192x108 nên chi phí vẽ gần như bằng 0. */
+  _miniLast: 0,
+  drawMinimap(game) {
+    const el = this.els.minimap;
+    if (!el) return;
+    const feats = (GAME_DATA.config.features || {});
+    if (feats.miniMapEnabled === false) {
+      if (this.els.minimapWrap) this.els.minimapWrap.classList.add("hidden");
+      return;
+    }
+    if (this.els.minimapWrap) this.els.minimapWrap.classList.remove("hidden");
+
+    const now = performance.now();
+    if (now - this._miniLast < 80) return;
+    this._miniLast = now;
+
+    const ctx = el.getContext("2d");
+    const W = el.width, H = el.height;
+    const sx = W / BattleCamera.W, sy = H / BattleCamera.H;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(24,18,12,.9)";
+    ctx.fillRect(0, 0, W, H);
+
+    const lv = game.levelDef;
+    if (!lv) return;
+
+    // đường tiến quân
+    const path = lv.path || [];
+    if (path.length > 1) {
+      ctx.strokeStyle = "rgba(201,162,74,.55)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(path[0].x * sx, path[0].y * sy);
+      for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x * sx, path[i].y * sy);
+      ctx.stroke();
+    }
+    // thành
+    if (lv.castle) {
+      ctx.fillStyle = "#e8c873";
+      ctx.fillRect(lv.castle.x * sx - 3, lv.castle.y * sy - 3, 6, 6);
+    }
+    const r = game.run;
+    if (r) {
+      // quân ta (công trình)
+      ctx.fillStyle = "#6fd06a";
+      for (const t of r.towers) {
+        ctx.fillRect(t.x * sx - 1.5, t.y * sy - 1.5, 3, 3);
+      }
+      // quân địch + Boss
+      for (const en of r.enemies) {
+        if (en.isBoss) {
+          ctx.fillStyle = "#ffd96b";
+          ctx.beginPath();
+          ctx.arc(en.x * sx, en.y * sy, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = "#e05a3c";
+          ctx.fillRect(en.x * sx - 1, en.y * sy - 1, 2, 2);
+        }
+      }
+    }
+    // khung nhìn hiện tại
+    const v = BattleCamera.viewRect();
+    ctx.strokeStyle = "rgba(255,255,255,.8)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(v.x * sx + 0.5, v.y * sy + 0.5, v.w * sx - 1, v.h * sy - 1);
+  },
+
+  /* ---------------- MỞ NHANH BẢNG XÂY ---------------- */
+  _openFirstFreeSpot() {
+    if (!Game.run || !Game.levelDef) return;
+    const spots = Game.levelDef.buildSpots || [];
+    const idx = spots.findIndex((sp, i) => !Game.run.towers.some((t) => t.spotIndex === i));
+    if (idx === -1) { this.showToast("Đã xây kín mọi ô đất."); return; }
+    // đưa camera tới ô đó rồi mở bảng chọn ngay giữa chiến trường
+    BattleCamera.centerOn(spots[idx].x, spots[idx].y);
+    this._syncCamButtons();
+    const rect = this.els.canvas.getBoundingClientRect();
+    this._showTowerPicker(idx, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  },
+
+  /* =========================================================
+     ANIMATION TIẾN HOÁ VŨ KHÍ / CÔNG TRÌNH
+     Gọi từ Game._onTowerLevelUp() khi vượt mốc Lv5 hoặc Lv10.
+     Tự đóng sau 2,2 giây; timer được dọn sạch nếu mở lại liên tiếp.
+     ========================================================= */
+  _evoTimer: null,
+  showEvolution(tower, tier) {
+    const e = this.els;
+    if (!e.evoOverlay || !tower || !tier) return;
+    const vis = (typeof TowerTiers !== "undefined") ? TowerTiers.visual(tower.def, tower.level) : null;
+
+    e.evoIcon.textContent = tower.def.icon || "🏯";
+    e.evoName.textContent = tier.name || tower.displayName();
+    e.evoLevel.textContent = `LEVEL ${tower.level} · ${tier.label || ""}`;
+
+    const rows = tower.isSupport
+      ? [["Hào quang sát thương", "+" + Math.round(tower.auraOutput().damage * 100) + "%"],
+         ["Hào quang tốc bắn", "+" + Math.round(tower.auraOutput().fireRate * 100) + "%"],
+         ["Bán kính", Math.round(tower.effectiveRange())]]
+      : [["Sát thương", Math.round(tower.effectiveDamage())],
+         ["Tầm bắn", Math.round(tower.effectiveRange())],
+         ["Tốc độ đánh", tower.effectiveFireRate().toFixed(2) + "/s"],
+         ["Hiệu ứng", vis ? { basic: "Cơ bản", metal: "Tia lửa kim loại", aura: "Hào quang", trail: "Vệt đạn", legend: "Hào quang + hạt sáng", ultimate: "Diện mạo tối thượng" }[vis.fx] : "—"]];
+    e.evoStats.innerHTML = rows
+      .map((r) => `<div class="evo-stat"><span>${r[0]}</span><b>${r[1]}</b></div>`)
+      .join("");
+
+    if (tier.ultimate) {
+      e.evoUltimate.textContent = "⚡ " + tier.ultimate;
+      e.evoUltimate.classList.remove("hidden");
+    } else {
+      e.evoUltimate.classList.add("hidden");
+    }
+
+    e.evoOverlay.classList.remove("hidden");
+    if (this._evoTimer) clearTimeout(this._evoTimer);
+    this._evoTimer = setTimeout(() => {
+      e.evoOverlay.classList.add("hidden");
+      this._evoTimer = null;
+    }, 2400);
   },
 
   _hideTowerPicker() {

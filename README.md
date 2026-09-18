@@ -422,3 +422,29 @@ GPU): dựng địa hình, dựng thành, đủ bệ đặt tháp, **chiếu ↔
 nhau với sai số 0.0000px**, bấm đúng ô đất, mỗi tháp một mô hình, vòng lặp
 dựng hình liên tục qua cả trận tới khi thắng, pool mesh không phình, dọn
 sạch khi rời trận, và tắt/bật lại được chế độ 3D.
+
+---
+
+# GIAI ĐOẠN 6 — CHIẾN DỊCH 10 LEVEL · CAMERA CHIẾN TRƯỜNG · CÔNG TRÌNH 10 CẤP
+
+## Tệp mới
+| Tệp | Vai trò |
+|---|---|
+| `js/camera.js` | `BattleCamera`: pan/zoom/pinch, kẹp biên bản đồ, theo dõi Boss, đổi toạ độ màn hình ↔ bản đồ. |
+| `js/tower-tiers.js` | `TowerTiers`: tra cứu 6 mốc tiến hoá (Lv 1/3/5/7/9/10) → tên, ngoại hình, hiệu ứng, hệ số sức mạnh. |
+
+## Tệp đã sửa
+- `shared/data-service.js` — `SCHEMA_VERSION` 10→11, `TOWER_TIER_NAMES`, `withTowerTiers()`, `enemyPoolFor()`, `miniBossFor()`, `makeWave()`, `expandStageWaves()`, 2 màn mới, 5 Boss/Mini Boss mới, `migrateSchemaV10ToV11()`.
+- `js/entities.js` — `Tower.displayName()/tier()/nextTier()`, hệ số mốc trong `effectiveDamage/effectiveRange`, đường giá 10 cấp, vẽ 2D theo mốc.
+- `js/renderer3d.js` — `_applyCamera()` (camera 3D chạy theo `BattleCamera`), `_syncTowerTier()` + `_animateTierOrnament()` (ngoại hình 3D đổi theo mốc).
+- `js/game.js` — biến đổi camera cho chế độ 2D, `_initCamera()`, `_onTowerLevelUp()`, gọi mini-map trong `render()`.
+- `js/ui.js` — bản đồ chiến dịch, Thành Hoa Lư, kho tra cứu, xử lý pointer (kéo/pinch/tap), nút camera, mini-map, overlay tiến hoá, HUD ⏱/👹.
+- `js/sound-manager.js` — SFX `evolve`, `miniboss`.
+- `index.html` — bố cục dọc 3 tầng, nút camera, mini-map, overlay tiến hoá, hub, campaign map, 2 công tắc cài đặt mới.
+- `css/style.css` — khối mobile-portrait + camera + tiến hoá + campaign map + hub (cuối tệp).
+
+## Số Wave theo Level
+1:10 · 2:12 · 3:14 · 4:15 · 5:16 · 6:18 · 7:20 · 8:20 · 9:22 · 10:25 — Mini Boss từ Level 3.
+
+## Tương thích dữ liệu
+`migrateSchemaV10ToV11` chỉ THÊM, không ghi đè. Đã kiểm chứng: giá/tên công trình do Admin sửa tay, vàng và số sao của người chơi đều giữ nguyên sau khi cập nhật.
