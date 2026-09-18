@@ -172,7 +172,7 @@ Ví dụ cụ thể đã kiểm chứng:
 
 ### Giới hạn được ghi nhận rõ ràng (không làm giả)
 
-M��t số field trong đề bài được **lưu trữ và cho phép Admin chỉnh sửa**
+Một số field trong đề bài được **lưu trữ và cho phép Admin chỉnh sửa**
 nhưng **chưa được lập trình gắn vào gameplay** trong bản này, vì việc đó đòi
 hỏi thêm cơ chế không có sẵn trong engine gốc (quân địch tấn công tháp,
 mana/năng lượng, hero lên cấp qua kinh nghiệm trong trận...). Các field này
@@ -281,9 +281,64 @@ không phải chỉ đọc code bằng mắt. Đã xác nhận:
 
 ## 10. Ghi chú khác
 
-- Không có file âm thanh/nhạc nào trong dự án (`musicEnabled` là cờ dữ
-  liệu dự phòng, chưa phát ra âm thanh thật vì không có asset).
+- Dự án **không dùng file âm thanh ngoài**: toàn bộ SFX và nhạc nền đều
+  được *tổng hợp trực tiếp bằng Web Audio API* trong `js/sound-manager.js`
+  (thang ngũ cung, bè trầm, trống đồng). `musicEnabled` và `sfxEnabled` là
+  hai cờ độc lập, bật/tắt được trong Settings và trong màn Pause.
 - `MAX_LEVEL`, `expToUpgrade` của Tướng: dùng cho công thức lên cấp
   người chơi (`GameState.addPersistentReward`) và giới hạn cấp độ tối đa;
   lên cấp Tướng qua chiến đấu (thay vì chỉ Admin chỉnh tay) là hướng mở
   rộng tiếp theo.
+
+
+---
+
+## 11. Giai đoạn 4 – Bản nâng cấp toàn diện
+
+Giai đoạn 4 giữ nguyên 100% chức năng cũ và bổ sung:
+
+**Chiến đấu.** Sát thương chia loại `physical` / `magic` / `true`; giáp
+(`defense` phẳng + `resistance` %) chống sát thương vật lý, `magicResist`
+chống phép, `armorPen` xuyên giáp, chí mạng có `critResist` của địch. Hiệu
+ứng trạng thái: Slow, Freeze, Stun, Burn, Poison, Bleed (`STATUS_META`
+trong `js/entities.js`). Địch có `behavior` riêng: `dash`, `armored`,
+`flying` (bay thẳng tới thành, bỏ qua đường đi), `healer` (hồi máu đồng
+đội), `shield` (khiên tự hồi), `regen` (bị Poison thì mất hồi máu),
+`splitter` (chết thì tách quân con). Boss có nhiều phase, `shield_self`,
+`tower_disable`, triệu hồi, và giảm 60–70% thời gian bị khống chế.
+
+**Tháp.** 12 loại tháp theo vai trò (sát thương đơn, diện rộng, khống chế,
+phép, độc, hỗ trợ hào quang). Mỗi tháp có **cây nâng cấp 2 nhánh** rẽ ở cấp
+3, nhiều cấp, **bán tháp hoàn `SELL_REFUND_RATE` (70%) tổng vốn đã đầu tư**,
+**7 chế độ ưu tiên mục tiêu**, và bảng thông tin đầy đủ khi chọn tháp
+(sát thương + loại, tốc đánh, DPS, tầm, chí mạng, xuyên giáp, nổ, hiệu ứng).
+
+**Tướng.** 7 tướng, mỗi tướng ra trận thật trên bản đồ (tự đánh, có hào
+quang/animation riêng), có kỹ năng chủ động nâng cấp được bằng vàng bền
+vững và **kỹ năng bị động** (tăng damage/tốc đánh/tầm tháp, chí mạng, vàng,
+hồi máu thành, hào quang làm chậm).
+
+**Bản đồ.** 8 màn với `theme` riêng (karst, citadel, river, mountain,
+field) và **chướng ngại vật sinh tất định** (`generateObstacles`), độ khó
+tăng dần, Wave System + Boss Wave.
+
+**Save.** `SCHEMA_VERSION = 9` cho dữ liệu, `SAVE_FORMAT_VERSION = 4` cho
+tiến trình và `RUN_SAVE_VERSION = 4` cho ván đang chơi. Snapshot sai
+version sẽ bị **loại bỏ an toàn** thay vì làm hỏng game.
+
+**Hiệu năng.** Projectile giữ tham chiếu trực tiếp tới mục tiêu (bỏ tìm
+kiếm mỗi khung hình) và tự nhả tham chiếu khi trúng; EffectManager có trần
+số hiệu ứng; mảng entity chỉ được lọc khi thật sự có phần tử chết; game
+loop chia bước nhỏ theo tốc độ x1/x2/x3 nên không "nhảy cóc"; mọi
+`setInterval` của nhạc nền đều được `clearInterval`.
+
+**Phím tắt.** `Space`/`Enter` bắt đầu đợt · `P` tạm dừng · `S` kỹ năng ·
+`F` đổi tốc độ · `Esc` đóng bảng/menu.
+
+### Đã kiểm thử
+
+Bộ kiểm thử tự động (jsdom) chạy qua toàn bộ luồng: dựng `GAME_DATA`,
+điều hướng mọi màn hình, vào trận, xây đủ 12 loại tháp, nâng cấp + chọn
+nhánh, đổi ưu tiên mục tiêu, bán tháp, chơi tới khi thắng, kiểm tra không
+còn enemy/projectile rác, lưu/tải ván đang chơi kèm version, và cả 5 phím
+tắt. Tất cả đều đạt, không có lỗi JavaScript.

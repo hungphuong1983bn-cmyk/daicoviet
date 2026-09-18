@@ -577,7 +577,8 @@ const AdminApp = {
     const config = DataService.getConfig();
     const f = config.features || {};
     const featureList = [
-      ["soundEnabled", "Sound"], ["musicEnabled", "Music (chưa có file nhạc trong dự án)"],
+      ["soundEnabled", "Sound (công tắc tổng)"], ["musicEnabled", "Music (nhạc nền tổng hợp bằng Web Audio, theo chủ đề màn)"],
+      ["sfxEnabled", "SFX (tiếng bắn, trúng đòn, nâng cấp, bán tháp, Boss, Victory)"],
       ["tutorialEnabled", "Tutorial"], ["autoSaveEnabled", "Auto save"],
       ["debugMode", "Debug mode (hiện vùng bắn của tháp)"], ["showDamageNumbers", "Damage numbers"],
       ["showEnemyHpBar", "Enemy HP bar"], ["showFps", "FPS display"],
@@ -590,6 +591,12 @@ const AdminApp = {
           '<div class="form-field"><label class="form-label">START_HP (HP thành khởi đầu)</label><input class="form-input" type="number" name="START_HP" value="' + config.START_HP + '"></div>' +
           '<div class="form-field"><label class="form-label">ENEMY_SPAWN_RATE (hệ số giãn cách spawn)</label><input class="form-input" type="number" step="0.1" name="ENEMY_SPAWN_RATE" value="' + config.ENEMY_SPAWN_RATE + '"></div>' +
           '<div class="form-field"><label class="form-label">WAVE_TIME (dự phòng, giây)</label><input class="form-input" type="number" name="WAVE_TIME" value="' + config.WAVE_TIME + '"></div>' +
+          '<div class="form-field"><label class="form-label">SELL_REFUND_RATE (tỉ lệ hoàn tiền khi bán tháp)</label>' +
+            '<input class="form-input" type="number" step="0.05" min="0" max="1" name="SELL_REFUND_RATE" value="' + (config.SELL_REFUND_RATE != null ? config.SELL_REFUND_RATE : 0.7) + '">' +
+            '<p class="field-hint">0.7 = hoàn 70% tổng vốn đã bỏ ra cho tháp (tiền xây + mọi lần nâng cấp).</p></div>' +
+          '<div class="form-field"><label class="form-label">TIDE_CYCLE_SECONDS (chu kỳ thuỷ triều)</label>' +
+            '<input class="form-input" type="number" step="0.5" min="1" name="TIDE_CYCLE_SECONDS" value="' + (config.TIDE_CYCLE_SECONDS != null ? config.TIDE_CYCLE_SECONDS : 9) + '">' +
+            '<p class="field-hint">Dùng cho màn có cơ chế đặc biệt "tide".</p></div>' +
         '</div>' +
         '<h3 class="section-subtitle">Tính năng bật/tắt</h3>' +
         '<div class="form-grid">' +
@@ -609,6 +616,8 @@ const AdminApp = {
         START_HP: Number(fd.get("START_HP")),
         ENEMY_SPAWN_RATE: Number(fd.get("ENEMY_SPAWN_RATE")),
         WAVE_TIME: Number(fd.get("WAVE_TIME")),
+        SELL_REFUND_RATE: Number(fd.get("SELL_REFUND_RATE")),
+        TIDE_CYCLE_SECONDS: Number(fd.get("TIDE_CYCLE_SECONDS")),
         features,
       });
       Components.toast("Đã lưu cấu hình game.");

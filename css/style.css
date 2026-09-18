@@ -531,3 +531,158 @@ html,body{
 @media (min-width:1024px){
   .game-stage{padding:12px;}
 }
+
+/* =========================================================
+   GIAI ĐOẠN 4 – Giao diện mở rộng
+   Bảng tháp chi tiết, cây nâng cấp, ưu tiên mục tiêu, bán tháp,
+   tooltip dùng chung, HUD nâng cấp, cài đặt nhạc/SFX.
+   Tất cả đều dùng lại bảng màu Đại Cồ Việt sẵn có (sơn son – thếp vàng –
+   gỗ lim – giấy dó) để không phá vỡ phong cách tổng thể.
+   ========================================================= */
+
+/* ---------- Tooltip dùng chung ---------- */
+.tooltip{
+  position:fixed;z-index:999;
+  max-width:260px;
+  padding:8px 11px;
+  background:linear-gradient(180deg,#2b1f16,#1a120c);
+  border:1px solid var(--vang-dong);
+  border-radius:8px;
+  color:var(--giay-do);
+  font-size:12.5px;line-height:1.45;
+  box-shadow:0 8px 22px var(--shadow);
+  pointer-events:none;
+  animation:tipIn .14s ease both;
+}
+@keyframes tipIn{from{opacity:0;transform:translateY(3px);}to{opacity:1;transform:translateY(0);}}
+.tooltip.hidden{display:none;}
+
+/* ---------- HUD ---------- */
+.hud-stage-name{
+  font-size:12px;letter-spacing:.06em;
+  color:var(--vang-sang);opacity:.85;
+  text-transform:uppercase;
+}
+.hud-hp-track{
+  display:inline-block;width:54px;height:6px;margin-left:6px;
+  background:rgba(0,0,0,.45);border-radius:3px;overflow:hidden;
+  vertical-align:middle;
+}
+.hud-hp-fill{
+  display:block;height:100%;width:100%;
+  background:linear-gradient(90deg,#7bc96f,#4f9e52);
+  transition:width .18s linear;
+}
+.hud-hp-fill.low{background:linear-gradient(90deg,#e06a55,#a8321f);}
+
+/* ---------- Bảng chọn / thông tin tháp ---------- */
+.tower-picker{max-width:min(94vw,420px);}
+.picker-header{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  font-size:13px;font-weight:700;color:var(--vang-sang);
+  padding-bottom:6px;margin-bottom:6px;
+  border-bottom:1px solid rgba(201,162,74,.35);
+}
+.tower-option .t-role{
+  display:block;font-size:10px;color:var(--vang-sang);
+  opacity:.8;margin:2px 0 3px;
+}
+
+/* Bảng chỉ số tháp */
+.stat-table{
+  display:grid;grid-template-columns:1fr;gap:2px;
+  margin-bottom:8px;
+}
+.stat-row{
+  display:flex;justify-content:space-between;gap:10px;
+  font-size:12px;padding:3px 6px;border-radius:5px;
+  background:rgba(0,0,0,.18);
+}
+.stat-row b{color:var(--vang-sang);font-weight:700;}
+
+/* Ưu tiên mục tiêu */
+.priority-box{margin-bottom:8px;}
+.priority-title{font-size:11.5px;color:var(--vang-sang);margin-bottom:4px;opacity:.9;}
+.priority-list{display:flex;flex-wrap:wrap;gap:4px;}
+.prio-btn{
+  font:inherit;font-size:11px;cursor:pointer;
+  padding:4px 7px;border-radius:6px;
+  background:rgba(46,33,25,.75);
+  border:1px solid rgba(201,162,74,.35);
+  color:var(--giay-do);
+  transition:background .15s,border-color .15s,transform .1s;
+}
+.prio-btn:hover{background:rgba(70,50,34,.9);}
+.prio-btn:active{transform:scale(.96);}
+.prio-btn.active{
+  background:linear-gradient(180deg,var(--vang-dong),#a8842f);
+  border-color:var(--vang-sang);color:#2a1c10;font-weight:700;
+}
+
+/* Cây nâng cấp 2 nhánh */
+.branch-title{font-size:12px;color:var(--vang-sang);margin-bottom:5px;font-weight:700;}
+.branch-list{display:flex;gap:6px;}
+.branch-btn{
+  flex:1;display:flex;flex-direction:column;gap:2px;align-items:center;
+  font:inherit;cursor:pointer;text-align:center;
+  padding:8px 6px;border-radius:8px;
+  background:linear-gradient(180deg,rgba(60,42,30,.95),rgba(38,26,18,.95));
+  border:1px solid rgba(201,162,74,.45);
+  color:var(--giay-do);
+  transition:transform .12s,border-color .15s,box-shadow .15s;
+}
+.branch-btn:hover:not(:disabled){
+  border-color:var(--vang-sang);
+  box-shadow:0 0 12px rgba(232,200,115,.25);
+  transform:translateY(-2px);
+}
+.branch-btn:disabled{opacity:.45;cursor:not-allowed;}
+.branch-icon{font-size:20px;}
+.branch-name{font-size:12px;font-weight:700;color:var(--vang-sang);}
+.branch-desc{font-size:10px;line-height:1.35;opacity:.82;}
+
+.upgrade-actions{margin-bottom:8px;}
+.upgrade-actions .btn{width:100%;}
+.btn-sell{width:100%;}
+.upgrade-maxed{
+  text-align:center;font-size:12px;color:var(--vang-sang);
+  padding:6px;border:1px dashed rgba(201,162,74,.5);border-radius:6px;
+}
+
+/* ---------- Tướng: kỹ năng chủ động / bị động ---------- */
+.hero-skill{
+  display:flex;align-items:center;gap:6px;
+  margin-top:4px;font-size:11.5px;
+  padding:3px 6px;border-radius:6px;
+  background:rgba(0,0,0,.18);
+}
+.hero-skill-icon{font-size:14px;}
+.hero-skill-name b{color:var(--vang-sang);}
+.hero-passive{background:rgba(47,93,80,.28);}
+.hero-action{display:flex;flex-direction:column;gap:5px;align-items:stretch;}
+
+/* ---------- Cài đặt ---------- */
+.settings-note{
+  font-size:11.5px;opacity:.75;line-height:1.6;
+  margin:10px 0 4px;color:var(--giay-do-dim);
+}
+.btn-toggle.off{opacity:.6;}
+.pause-hint{font-size:11.5px;opacity:.65;margin-top:8px;}
+
+/* ---------- Overlay kết quả ---------- */
+.overlay-stats{margin:10px 0;display:flex;flex-direction:column;gap:3px;}
+.overlay-stat-row{
+  display:flex;justify-content:space-between;gap:12px;
+  font-size:12.5px;padding:4px 8px;border-radius:6px;
+  background:rgba(0,0,0,.2);
+}
+.overlay-stat-row strong{color:var(--vang-sang);}
+.overlay-tip{font-size:11.5px;opacity:.8;line-height:1.5;text-align:left;}
+
+/* ---------- Di động ---------- */
+@media (max-width:640px){
+  .branch-list{flex-direction:column;}
+  .tower-picker{max-width:94vw;}
+  .hud-stage-name{display:none;}
+  .stat-row{font-size:11.5px;}
+}

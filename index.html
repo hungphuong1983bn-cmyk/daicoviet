@@ -63,8 +63,28 @@
         <li>Nếu địch lọt đến thành, <strong>HP thành</strong> sẽ giảm. Hết HP là thua.</li>
         <li>Sống sót qua hết các đợt để <strong>chiến thắng</strong> màn chơi và mở màn tiếp theo.</li>
         <li>Hoàn thành <strong>Nhiệm vụ</strong> để nhận thêm vàng/kinh nghiệm dùng cho việc mở khoá Tướng.</li>
-        <li>Dùng nút tốc độ <strong>1x / 2x</strong> để đẩy nhanh trận đánh.</li>
+        <li>Chạm vào tháp đã xây để xem <strong>chỉ số đầy đủ</strong>, đổi <strong>ưu tiên mục tiêu</strong>, <strong>nâng cấp</strong> hoặc <strong>bán</strong> (hoàn 70% vốn).</li>
+        <li>Từ <strong>cấp 3</strong>, mỗi tháp chọn 1 trong <strong>2 nhánh</strong> nâng cấp, đổi hẳn lối chơi của tháp đó.</li>
+        <li>Địch có <strong>giáp</strong> (chặn sát thương vật lý) và <strong>kháng phép</strong>: hãy phối hợp tháp vật lý (Cung thủ, Nỏ thần) với tháp phép (Đạo sĩ, Hoả tiễn).</li>
+        <li>Coi chừng địch <strong>bay</strong> (đi tắt tới thành), <strong>hồi máu</strong> đồng đội, <strong>khiên chắn</strong>, <strong>tự hồi máu</strong> và <strong>tách đôi khi chết</strong>.</li>
+        <li><strong>Trống đồng</strong> là tháp hỗ trợ: không bắn nhưng tăng sát thương/tốc bắn cho các tháp quanh nó.</li>
+        <li>Dùng nút tốc độ <strong>x1 / x2 / x3</strong> để đẩy nhanh trận đánh.</li>
+        <li>Phím tắt: <strong>Space/Enter</strong> bắt đầu đợt · <strong>P</strong> tạm dừng · <strong>S</strong> kỹ năng · <strong>F</strong> tốc độ · <strong>Esc</strong> đóng bảng.</li>
       </ul>
+      <p><strong>Sát thương &amp; kháng cự:</strong> đòn <em>vật lý</em> bị <strong>Giáp</strong> chặn bớt, đòn <em>phép</em> bị <strong>Kháng phép</strong> chặn bớt. Gặp địch giáp dày hãy dùng tháp phép (Đạo sĩ, Hoả tiễn) hoặc tháp xuyên giáp (Nỏ thần).</p>
+      <p><strong>Hiệu ứng:</strong> 🐌 Làm chậm · ❄️ Đóng băng · ⚡ Choáng · 🔥 Thiêu đốt · ☠️ Trúng độc · 🩸 Chảy máu.</p>
+      <p><strong>Cây nâng cấp:</strong> từ cấp 3, mỗi tháp được chọn <strong>1 trong 2 nhánh</strong> để đổi hẳn lối đánh. Nhánh đã chọn không đổi lại được, nhưng bạn luôn có thể <strong>bán tháp</strong> để lấy lại phần lớn số vàng đã đầu tư.</p>
+      <div class="guide-keys">
+        <h3>Phím tắt</h3>
+        <ul>
+          <li><kbd>Space</kbd> / <kbd>Enter</kbd> – Bắt đầu đợt</li>
+          <li><kbd>P</kbd> – Tạm dừng / tiếp tục</li>
+          <li><kbd>S</kbd> – Dùng kỹ năng tướng</li>
+          <li><kbd>F</kbd> – Đổi tốc độ game</li>
+          <li><kbd>Esc</kbd> – Đóng bảng đang mở / quay lại</li>
+          <li><kbd>1</kbd>…<kbd>9</kbd> – Chọn nhanh loại tháp khi đang mở bảng xây</li>
+        </ul>
+      </div>
       <p>Tiến trình được tự động lưu lại trên trình duyệt của bạn.</p>
     </div>
     <button class="btn btn-primary" id="btn-guide-back">Quay lại</button>
@@ -76,8 +96,36 @@
   <div class="menu-panel">
     <h2 class="panel-title">Cài đặt</h2>
     <div class="settings-row">
-      <span>Âm thanh</span>
+      <span>Âm thanh tổng</span>
       <button class="btn btn-toggle" id="btn-toggle-sound">Bật</button>
+    </div>
+    <div class="settings-row">
+      <span>🎵 Nhạc nền</span>
+      <button class="btn btn-toggle" id="btn-toggle-music">Bật</button>
+    </div>
+    <div class="settings-row">
+      <span>🔊 Hiệu ứng (SFX)</span>
+      <button class="btn btn-toggle" id="btn-toggle-sfx">Bật</button>
+    </div>
+    <div class="settings-row settings-slider-row">
+      <span>Âm lượng nhạc</span>
+      <input type="range" id="range-music-volume" min="0" max="100" step="5" value="45">
+    </div>
+    <div class="settings-row settings-slider-row">
+      <span>Âm lượng SFX</span>
+      <input type="range" id="range-sfx-volume" min="0" max="100" step="5" value="85">
+    </div>
+    <div class="settings-row">
+      <span>💥 Số sát thương</span>
+      <button class="btn btn-toggle" id="btn-toggle-damage-numbers">Bật</button>
+    </div>
+    <div class="settings-row">
+      <span>💡 Chú giải (tooltip)</span>
+      <button class="btn btn-toggle" id="btn-toggle-tooltips">Bật</button>
+    </div>
+    <div class="settings-row">
+      <span>📈 Hiện FPS</span>
+      <button class="btn btn-toggle" id="btn-toggle-fps">Tắt</button>
     </div>
     <div class="settings-row">
       <span>Xoá tiến trình</span>
@@ -131,16 +179,19 @@
 <!-- ================= MÀN HÌNH CHƠI ================= -->
 <section id="screen-game" class="screen">
   <div class="hud">
-    <div class="hud-stat hud-gold"><span class="hud-icon">🪙</span><span id="hud-gold">0</span></div>
-    <div class="hud-stat hud-hp"><span class="hud-icon">🏯</span><span id="hud-hp">0</span></div>
-    <div class="hud-stat hud-score"><span class="hud-icon">⚔</span><span id="hud-score">0</span></div>
+    <div class="hud-stat hud-gold" data-tip="Vàng dùng để xây và nâng cấp tháp trong trận."><span class="hud-icon">🪙</span><span id="hud-gold">0</span></div>
+    <div class="hud-stat hud-hp" data-tip="Máu của thành. Hết máu là thua trận.">
+      <span class="hud-icon">🏯</span><span id="hud-hp">0</span>
+      <span class="hud-hp-track"><span id="hud-hp-fill" class="hud-hp-fill"></span></span>
+    </div>
+    <div class="hud-stat hud-score" data-tip="Điểm số của trận. Điểm cao mở thêm sao và thành tích."><span class="hud-icon">⚔</span><span id="hud-score">0</span></div>
     <div class="hud-stat hud-tide hidden" id="hud-tide"><span class="hud-icon">🌊</span><span id="hud-tide-label">Triều rút</span></div>
-    <div class="hud-stat hud-wave"><span class="hud-icon">🌊</span><span id="hud-wave">0/0</span></div>
+    <div class="hud-stat hud-wave" data-tip="Đợt hiện tại / tổng số đợt của màn."><span class="hud-icon">🌊</span><span id="hud-wave">0/0</span></div>
     <div class="hud-actions">
-      <button class="btn btn-small hidden" id="btn-skill" title="Kỹ năng tướng">✨</button>
-      <button class="btn btn-small" id="btn-speed">x1</button>
-      <button class="btn btn-small" id="btn-pause">II</button>
-      <button class="btn btn-small btn-exit" id="btn-exit">✕</button>
+      <button class="btn btn-small hidden" id="btn-skill" data-tip="Kỹ năng chủ động của tướng (phím S)">✨</button>
+      <button class="btn btn-small" id="btn-speed" data-tip="Đổi tốc độ game (phím F)">x1</button>
+      <button class="btn btn-small" id="btn-pause" data-tip="Tạm dừng (phím P)">II</button>
+      <button class="btn btn-small btn-exit" id="btn-exit" data-tip="Thoát về menu (tiến trình được lưu)">✕</button>
     </div>
   </div>
   <div id="combo-badge" class="combo-badge hidden">COMBO x0</div>
@@ -160,7 +211,13 @@
   </div>
 
   <div class="game-footer">
-    <button class="btn btn-primary btn-wave" id="btn-start-wave">Bắt đầu đợt</button>
+    <div id="hero-hud" class="hero-hud hidden">
+      <span id="hero-hud-icon" class="hero-hud-icon">🧑</span>
+      <span id="hero-hud-name" class="hero-hud-name"></span>
+      <span id="hero-hud-passive" class="hero-hud-passive"></span>
+    </div>
+    <button class="btn btn-primary btn-wave" id="btn-start-wave" data-tip="Thả quân địch của đợt tiếp theo (phím Space)">Bắt đầu đợt</button>
+    <span class="footer-hint">Space: đợt · P: dừng · S: kỹ năng · F: tốc độ · Esc: đóng</span>
   </div>
 
   <!-- Overlay thắng / thua -->
@@ -181,15 +238,30 @@
   <!-- Overlay tạm dừng -->
   <div id="overlay-pause" class="overlay hidden">
     <div class="overlay-panel">
-      <h2>Tạm dừng</h2>
+      <h2>⏸ Tạm dừng</h2>
+      <div id="pause-summary" class="pause-summary"></div>
+      <div class="pause-settings">
+        <div class="settings-row">
+          <span>🎵 Nhạc nền</span>
+          <button class="btn btn-toggle btn-small" id="btn-pause-music">Bật</button>
+        </div>
+        <div class="settings-row">
+          <span>🔊 Hiệu ứng (SFX)</span>
+          <button class="btn btn-toggle btn-small" id="btn-pause-sfx">Bật</button>
+        </div>
+      </div>
+      <p class="pause-keys">Space: bắt đầu đợt · P: dừng · S: kỹ năng · F: tốc độ · Esc: đóng</p>
       <div class="overlay-actions">
         <button class="btn btn-primary" id="btn-resume">Tiếp tục chơi</button>
+        <button class="btn" id="btn-pause-restart">Chơi lại màn</button>
         <button class="btn" id="btn-pause-menu">Về menu</button>
       </div>
     </div>
   </div>
 </section>
 
+<div id="tooltip" class="tooltip hidden"></div>
+<div id="tooltip" class="tooltip hidden"></div>
 <div id="toast-container" class="toast-container"></div>
 
 <script src="shared/storage-service.js"></script>

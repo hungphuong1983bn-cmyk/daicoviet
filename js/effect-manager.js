@@ -19,12 +19,32 @@
 const EffectManager = {
   _numbers: [],
   _sparks: [],
+  _rings: [],   // vòng nổ lan (Giai đoạn 4)
+  _beams: [],   // vệt đánh của Tướng (Giai đoạn 4)
   _shake: { magnitude: 0, timer: 0, duration: 0 },
+  /* Trần số lượng hiệu ứng cùng lúc: bảo vệ FPS và bộ nhớ khi combo cao,
+     đúng yêu cầu mục 8 (không để vật thể vô dụng tồn đọng). */
+  _MAX_NUMBERS: 90,
+  _MAX_SPARKS: 260,
 
   reset() {
-    this._numbers = [];
-    this._sparks = [];
+    this._numbers.length = 0;
+    this._sparks.length = 0;
+    this._rings.length = 0;
+    this._beams.length = 0;
     this._shake = { magnitude: 0, timer: 0, duration: 0 };
+  },
+
+  /* Vòng sóng xung kích khi đạn diện rộng phát nổ. */
+  spawnBlast(x, y, radius, color) {
+    if (this._rings.length > 40) return;
+    this._rings.push({ x, y, radius: radius || 40, color: color || "#e8c873", life: 0.35, age: 0 });
+  },
+
+  /* Vệt sáng nối tướng với mục tiêu vừa bị đánh. */
+  spawnBeam(x1, y1, x2, y2, color) {
+    if (this._beams.length > 24) return;
+    this._beams.push({ x1, y1, x2, y2, color: color || "#e8c873", life: 0.22, age: 0 });
   },
 
   /* Rung màn hình (mục XXXVI) - CHỈ dùng cho Máy bắn đá, Boss skill, Boss
@@ -52,10 +72,12 @@ const EffectManager = {
     return { x: (Math.random() * 2 - 1) * m, y: (Math.random() * 2 - 1) * m };
   },
 
-  spawnDamageNumber(x, y, amount, isCritical) {
+  spawnDamageNumber(x, y, amount, isCritical, kind) {
+    if (this._numbers.length >= this._MAX_NUMBERS) return;
     this._numbers.push({
       x, y, amount,
       isCritical: !!isCritical,
+      kind: kind || null, // "burn"|"poison"|"bleed"|"shield" -> đổi màu số
       life: isCritical ? 1.0 : 0.8,
       age: 0,
     });
@@ -63,7 +85,8 @@ const EffectManager = {
   },
 
   spawnSpark(x, y, color, count) {
-    const n = count || 4;
+    let n = count || 4;
+    if (this._sparks.length + n > this._MAX_SPARKS) n = Math.max(0, this._MAX_SPARKS - this._sparks.length);
     for (let i = 0; i < n; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 40 + Math.random() * 70;
@@ -96,11 +119,42 @@ const EffectManager = {
       s.vy += 110 * dt; // trọng lực nhẹ
     }
     if (this._sparks.length > 0) this._sparks = this._sparks.filter((s) => s.age < s.life);
+
+    for (const r of this._rings) r.age += dt;
+    if (this._rings.length > 0) this._rings = this._rings.filter((r) => r.age < r.life);
+
+    for (const b of this._beams) b.age += dt;
+    if (this._beams.length > 0) this._beams = this._beams.filter((b) => b.age < b.life);
   },
 
   draw(ctx) {
-    if (this._sparks.length === 0 && this._numbers.length === 0) return;
+    if (this._sparks.length === 0 && this._numbers.length === 0 &&
+        this._rings.length === 0 && this._beams.length === 0) return;
     ctx.save();
+
+    // vệt đánh của Tướng
+    for (const b of this._beams) {
+      const a = Math.max(0, 1 - b.age / b.life);
+      ctx.globalAlpha = a * 0.9;
+      ctx.strokeStyle = b.color;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(b.x1, b.y1);
+      ctx.lineTo(b.x2, b.y2);
+      ctx.stroke();
+    }
+
+    // vòng sóng xung kích của đòn nổ diện rộng
+    for (const r of this._rings) {
+      const t = r.age / r.life;
+      ctx.globalAlpha = Math.max(0, 1 - t) * 0.65;
+      ctx.strokeStyle = r.color;
+      ctx.lineWidth = 3 * (1 - t) + 1;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, r.radius * (0.35 + t * 0.75), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
     for (const s of this._sparks) {
       const a = Math.max(0, 1 - s.age / s.life);
       ctx.globalAlpha = a;
@@ -122,7 +176,11 @@ const EffectManager = {
         ctx.fillText("-" + Math.round(n.amount), n.x, n.y - 15);
       } else {
         ctx.font = "bold 12px sans-serif";
-        ctx.fillStyle = "#fff2c9";
+        ctx.fillStyle =
+          n.kind === "burn" ? "#ff9b4a" :
+          n.kind === "poison" ? "#9ede6a" :
+          n.kind === "bleed" ? "#ff7d7d" :
+          n.kind === "shield" ? "#8cc8ff" : "#fff2c9";
         ctx.fillText("-" + Math.round(n.amount), n.x, n.y - 15);
       }
     }

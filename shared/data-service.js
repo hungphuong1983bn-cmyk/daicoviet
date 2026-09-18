@@ -37,7 +37,7 @@ const DataService = (() => {
     adminLogs: "collection:adminLogs",
   };
 
-  const SCHEMA_VERSION = 8;
+  const SCHEMA_VERSION = 9;
 
   /* ---------------------------------------------------------
      DỮ LIỆU MẶC ĐỊNH (seed)
@@ -55,12 +55,15 @@ const DataService = (() => {
       ENEMY_SPAWN_RATE: 1, // hệ số nhân lên khoảng cách spawn (1 = mặc định, <1 = spawn nhanh hơn)
       BOSS_MULTIPLIER: 1,
       REWARD_MULTIPLIER: 1,
+      SELL_REFUND_RATE: 0.7,   // Giai đoạn 4: bán tháp hoàn lại 70% tổng vốn đã bỏ ra
+      TIDE_CYCLE_SECONDS: 9,
       canvasWidth: 960,
       canvasHeight: 540,
-      speeds: [1, 2],
+      speeds: [1, 2, 3],
       features: {
         soundEnabled: true,
-        musicEnabled: false, // chưa có file nhạc trong dự án, cờ này để dành sẵn
+        sfxEnabled: true,
+        musicEnabled: true,  // Giai đoạn 4: nhạc nền được TỔNG HỢP bằng Web Audio, không cần file
         tutorialEnabled: true,
         autoSaveEnabled: true,
         debugMode: false,
@@ -71,154 +74,443 @@ const DataService = (() => {
     };
   }
 
+  /* ---------------------------------------------------------
+     CÔNG TRÌNH / THÁP (Giai đoạn 4)
+     Mỗi tháp có:
+       role          - vai trò chiến thuật (dps/aoe/control/support/siege)
+       damageType    - "physical" (bị Giáp chặn) | "magic" (bị Kháng phép chặn)
+       targetPriority- chế độ ưu tiên mục tiêu mặc định
+       upgradeTree   - cây nâng cấp riêng: từ cấp branchAt trở lên người chơi
+                       chọn 1 trong 2 nhánh, mỗi nhánh đổi hẳn lối chơi của tháp
+       aura*         - dành cho tháp hỗ trợ (không bắn, buff tháp xung quanh)
+     --------------------------------------------------------- */
   function defaultBuildings() {
     return [
       {
         id: "cung_thu", name: "Cung thủ", nameVi: "Cung thủ",
-        description: "Bắn xa, sát thương vừa phải, tốc bắn nhanh.",
-        icon: "🏹", color: "#c9a24a",
+        description: "Bắn xa, sát thương vừa phải, tốc bắn nhanh. Lính đánh chủ lực giá rẻ.",
+        icon: "🏹", color: "#c9a24a", role: "dps", damageType: "physical",
         cost: 50, damage: 12, range: 130, fireRate: 1.1,
         projectileSpeed: 420, splashRadius: 0,
         criticalChance: 10, criticalMultiplier: 1.8, armorPenetration: 0,
         effectType: "none", effectValue: 0, effectDuration: 0,
+        targetPriority: "first",
         maxLevel: 5, upgradeCost: 40, upgradeDamageMult: 0.32, upgradeRangeMult: 0.07,
+        upgradeTree: {
+          branchAt: 3,
+          branches: [
+            { id: "than_xa", name: "Thần Xạ", icon: "🎯",
+              description: "Tầm bắn xa hơn, chí mạng cực cao — chuyên hạ mục tiêu đơn.",
+              damageMult: 1.25, rangeMult: 1.3, fireRateMult: 0.9,
+              critChanceBonus: 20, critMultiplierBonus: 0.5, armorPenBonus: 10 },
+            { id: "lien_chau", name: "Liên Châu", icon: "💨",
+              description: "Bắn liên hoàn như nỏ Liên Châu, tốc bắn tăng vọt.",
+              damageMult: 0.9, rangeMult: 1.0, fireRateMult: 1.85,
+              critChanceBonus: 5, critMultiplierBonus: 0, armorPenBonus: 0 },
+          ],
+        },
         enabled: true,
       },
       {
         id: "no_than", name: "Nỏ thần", nameVi: "Nỏ thần",
-        description: "Sát thương lớn, xuyên một phần giáp, bắn chậm.",
-        icon: "🎯", color: "#2f5d50",
+        description: "Sát thương lớn, xuyên một phần giáp, bắn chậm. Khắc chế địch giáp dày.",
+        icon: "🎯", color: "#2f5d50", role: "dps", damageType: "physical",
         cost: 100, damage: 30, range: 160, fireRate: 0.7,
         projectileSpeed: 520, splashRadius: 0,
         criticalChance: 18, criticalMultiplier: 2.2, armorPenetration: 35,
         effectType: "none", effectValue: 0, effectDuration: 0,
+        targetPriority: "strongest",
         maxLevel: 5, upgradeCost: 75, upgradeDamageMult: 0.36, upgradeRangeMult: 0.07,
+        upgradeTree: {
+          branchAt: 3,
+          branches: [
+            { id: "xuyen_giap", name: "Xuyên Giáp", icon: "🗡️",
+              description: "Mũi tên bọc thép xuyên thủng gần như mọi loại giáp.",
+              damageMult: 1.15, rangeMult: 1.05, fireRateMult: 1.0,
+              critChanceBonus: 5, critMultiplierBonus: 0.2, armorPenBonus: 55 },
+            { id: "kim_quy", name: "Nỏ Kim Quy", icon: "⚡",
+              description: "Móng rùa thần phóng điện, làm choáng mục tiêu trúng đòn.",
+              damageMult: 1.3, rangeMult: 1.1, fireRateMult: 0.8,
+              effectType: "stun", effectValue: 1, effectDuration: 0.6,
+              critChanceBonus: 10, critMultiplierBonus: 0.3, armorPenBonus: 10 },
+          ],
+        },
         enabled: true,
       },
       {
         id: "voi_chien", name: "Voi chiến", nameVi: "Voi chiến",
-        description: "Sát thương lan toả diện rộng, đắt nhưng dọn đám đông tốt.",
-        icon: "🐘", color: "#7a1f2b",
+        description: "Sát thương lan toả diện rộng, đắt nhưng dọn đám đông rất tốt.",
+        icon: "🐘", color: "#7a1f2b", role: "aoe", damageType: "physical",
         cost: 130, damage: 16, range: 100, fireRate: 0.8,
         projectileSpeed: 300, splashRadius: 45,
         criticalChance: 6, criticalMultiplier: 1.5, armorPenetration: 0,
         effectType: "none", effectValue: 0, effectDuration: 0,
+        targetPriority: "first",
         maxLevel: 5, upgradeCost: 95, upgradeDamageMult: 0.28, upgradeRangeMult: 0.05,
+        upgradeTree: {
+          branchAt: 3,
+          branches: [
+            { id: "xung_tran", name: "Voi Xung Trận", icon: "💥",
+              description: "Vùng sát thương lan rộng hơn nhiều, quét sạch đội hình đông.",
+              damageMult: 1.2, rangeMult: 1.15, fireRateMult: 1.0, splashRadiusBonus: 40 },
+            { id: "giay_xeo", name: "Voi Giày Xéo", icon: "⚡",
+              description: "Cú giậm chân làm choáng toàn bộ địch trong vùng nổ.",
+              damageMult: 1.1, rangeMult: 1.0, fireRateMult: 0.9, splashRadiusBonus: 15,
+              effectType: "stun", effectValue: 1, effectDuration: 0.8 },
+          ],
+        },
         enabled: true,
       },
       {
         id: "coc_nhon", name: "Bẫy cọc nhọn", nameVi: "Bẫy cọc nhọn",
-        description: "Cọc gỗ vót nhọn theo kế Ngô Quyền, gây sát thương nhẹ và làm chậm quân địch trúng phải.",
-        icon: "🪵", color: "#6b4a2f",
+        description: "Cọc gỗ vót nhọn theo kế Ngô Quyền, gây sát thương nhẹ và làm chậm quân địch.",
+        icon: "🪵", color: "#6b4a2f", role: "control", damageType: "physical",
         cost: 70, damage: 8, range: 95, fireRate: 1.4,
         projectileSpeed: 520, splashRadius: 0,
         criticalChance: 4, criticalMultiplier: 1.5, armorPenetration: 0,
         effectType: "slow", effectValue: 0.35, effectDuration: 2.5,
-        slowFactor: 0.35, slowDuration: 2.5, // giữ lại field cũ để tương thích ngược, engine đọc effectType
+        slowFactor: 0.35, slowDuration: 2.5, // giữ lại field cũ để tương thích ngược
+        targetPriority: "first",
         maxLevel: 5, upgradeCost: 55, upgradeDamageMult: 0.25, upgradeRangeMult: 0.05,
+        upgradeTree: {
+          branchAt: 3,
+          branches: [
+            { id: "coc_ngam", name: "Cọc Ngầm", icon: "🌊",
+              description: "Bãi cọc ngầm Bạch Đằng: làm chậm cực mạnh và lâu hơn.",
+              damageMult: 1.1, rangeMult: 1.2, fireRateMult: 1.0,
+              effectType: "slow", effectValue: 0.6, effectDuration: 4 },
+            { id: "coc_tam_doc", name: "Cọc Tẩm Độc", icon: "☠️",
+              description: "Đầu cọc tẩm độc, gây độc bào mòn máu địch theo thời gian.",
+              damageMult: 1.0, rangeMult: 1.1, fireRateMult: 1.1,
+              effectType: "poison", effectValue: 9, effectDuration: 6 },
+          ],
+        },
         enabled: true,
       },
       {
         id: "may_ban_da", name: "Máy bắn đá", nameVi: "Máy bắn đá",
         description: "Bắn đá tảng gây sát thương cực lớn trên diện rộng, tốc bắn chậm nhưng khắc chế Boss.",
-        icon: "🪨", color: "#5a4a3a",
+        icon: "🪨", color: "#5a4a3a", role: "siege", damageType: "physical",
         cost: 220, damage: 55, range: 190, fireRate: 0.4,
         projectileSpeed: 260, splashRadius: 70,
         criticalChance: 12, criticalMultiplier: 2.5, armorPenetration: 25,
         effectType: "none", effectValue: 0, effectDuration: 0,
+        targetPriority: "boss",
         maxLevel: 5, upgradeCost: 150, upgradeDamageMult: 0.32, upgradeRangeMult: 0.06,
+        upgradeTree: {
+          branchAt: 3,
+          branches: [
+            { id: "da_lua", name: "Đá Lửa", icon: "🔥",
+              description: "Đá tẩm dầu bốc cháy, thiêu đốt mọi kẻ trúng đòn.",
+              damageMult: 1.15, rangeMult: 1.05, fireRateMult: 1.0, splashRadiusBonus: 15,
+              effectType: "burn", effectValue: 14, effectDuration: 5 },
+            { id: "cong_thanh", name: "Công Thành", icon: "🏰",
+              description: "Đá công thành khổng lồ: sát thương và tầm bắn vượt trội.",
+              damageMult: 1.55, rangeMult: 1.3, fireRateMult: 0.85, splashRadiusBonus: 25,
+              armorPenBonus: 30 },
+          ],
+        },
         enabled: true,
       },
       {
         id: "riu_chien", name: "Rìu chiến", nameVi: "Rìu chiến",
-        description: "Cận chiến, sát thương đơn mục tiêu rất cao và tỉ lệ chí mạng lớn, nhưng tầm đánh ngắn.",
-        icon: "🪓", color: "#8a5a2f",
+        description: "Cận chiến, sát thương đơn mục tiêu rất cao và tỉ lệ chí mạng lớn, tầm đánh ngắn.",
+        icon: "🪓", color: "#8a5a2f", role: "dps", damageType: "physical",
         cost: 90, damage: 45, range: 75, fireRate: 0.9,
         projectileSpeed: 900, splashRadius: 0,
         criticalChance: 22, criticalMultiplier: 2.0, armorPenetration: 10,
         effectType: "none", effectValue: 0, effectDuration: 0,
+        targetPriority: "strongest",
         maxLevel: 5, upgradeCost: 70, upgradeDamageMult: 0.34, upgradeRangeMult: 0.04,
+        upgradeTree: {
+          branchAt: 3,
+          branches: [
+            { id: "dao_phu", name: "Đao Phủ", icon: "💀",
+              description: "Nhát chém quyết định: chí mạng khủng khiếp, chuyên chặt Boss.",
+              damageMult: 1.3, rangeMult: 1.1, fireRateMult: 0.9,
+              critChanceBonus: 25, critMultiplierBonus: 0.8, armorPenBonus: 20 },
+            { id: "cuong_chien", name: "Cuồng Chiến", icon: "🌀",
+              description: "Vung rìu liên tục không ngừng nghỉ, gây chảy máu cho địch.",
+              damageMult: 0.95, rangeMult: 1.15, fireRateMult: 1.7,
+              effectType: "bleed", effectValue: 6, effectDuration: 4 },
+          ],
+        },
         enabled: true,
       },
       {
         id: "hoa_tien", name: "Hoả tiễn", nameVi: "Hoả tiễn",
         description: "Tên lửa lửa gây sát thương diện rộng và đốt cháy quân địch theo thời gian.",
-        icon: "🚀", color: "#c9542a",
+        icon: "🚀", color: "#c9542a", role: "aoe", damageType: "magic",
         cost: 150, damage: 18, range: 150, fireRate: 0.9,
         projectileSpeed: 380, splashRadius: 40,
         criticalChance: 8, criticalMultiplier: 1.6, armorPenetration: 0,
         effectType: "burn", effectValue: 6, effectDuration: 4,
+        targetPriority: "first",
         maxLevel: 5, upgradeCost: 110, upgradeDamageMult: 0.3, upgradeRangeMult: 0.06,
+        upgradeTree: {
+          branchAt: 3,
+          branches: [
+            { id: "hoa_long", name: "Hoả Long", icon: "🐉",
+              description: "Ngọn lửa rồng cháy dai dẳng, huỷ diệt địch máu dày.",
+              damageMult: 1.15, rangeMult: 1.1, fireRateMult: 1.0,
+              effectType: "burn", effectValue: 16, effectDuration: 7 },
+            { id: "no_chum", name: "Nổ Chùm", icon: "💣",
+              description: "Đầu đạn nổ chùm, vùng sát thương và uy lực tức thời lớn hơn hẳn.",
+              damageMult: 1.5, rangeMult: 1.05, fireRateMult: 0.95, splashRadiusBonus: 35 },
+          ],
+        },
         enabled: true,
       },
       {
         id: "khien_binh", name: "Khiên binh", nameVi: "Khiên binh",
         description: "Sát thương thấp nhưng làm chậm mạnh, dùng để khống chế đội hình địch.",
-        icon: "🛡️", color: "#4a6a7a",
+        icon: "🛡️", color: "#4a6a7a", role: "control", damageType: "physical",
         cost: 60, damage: 5, range: 80, fireRate: 1.6,
         projectileSpeed: 520, splashRadius: 0,
         criticalChance: 0, criticalMultiplier: 1, armorPenetration: 0,
         effectType: "slow", effectValue: 0.55, effectDuration: 3,
+        targetPriority: "fastest",
         maxLevel: 5, upgradeCost: 45, upgradeDamageMult: 0.2, upgradeRangeMult: 0.04,
+        upgradeTree: {
+          branchAt: 3,
+          branches: [
+            { id: "tran_ap", name: "Trấn Áp", icon: "⚡",
+              description: "Cú thúc khiên làm choáng địch, chặn đứng bước tiến.",
+              damageMult: 1.4, rangeMult: 1.1, fireRateMult: 0.8,
+              effectType: "stun", effectValue: 1, effectDuration: 1.0 },
+            { id: "bang_giap", name: "Băng Giáp", icon: "❄️",
+              description: "Hơi lạnh đóng băng mục tiêu tại chỗ trong chốc lát.",
+              damageMult: 1.1, rangeMult: 1.25, fireRateMult: 1.0,
+              effectType: "freeze", effectValue: 1, effectDuration: 1.2 },
+          ],
+        },
         enabled: true,
       },
       {
         id: "thap_hoa_cong", name: "Hoả công", nameVi: "Hoả công",
         description: "Kế hoả công diện rộng, sát thương ban đầu thấp nhưng đốt cháy dai dẳng cả nhóm địch.",
-        icon: "♨️", color: "#a8391f",
+        icon: "♨️", color: "#a8391f", role: "aoe", damageType: "magic",
         cost: 180, damage: 10, range: 120, fireRate: 1.0,
         projectileSpeed: 340, splashRadius: 55,
         criticalChance: 5, criticalMultiplier: 1.5, armorPenetration: 0,
         effectType: "burn", effectValue: 8, effectDuration: 5,
+        targetPriority: "first",
         maxLevel: 5, upgradeCost: 130, upgradeDamageMult: 0.28, upgradeRangeMult: 0.05,
+        upgradeTree: {
+          branchAt: 3,
+          branches: [
+            { id: "hoa_nguc", name: "Hoả Ngục", icon: "🔥",
+              description: "Biển lửa thiêu rụi mọi thứ trong vùng, cháy cực mạnh.",
+              damageMult: 1.1, rangeMult: 1.15, fireRateMult: 1.0, splashRadiusBonus: 25,
+              effectType: "burn", effectValue: 18, effectDuration: 6 },
+            { id: "khoi_doc", name: "Khói Độc", icon: "☠️",
+              description: "Khói độc lan rộng khiến cả đám địch trúng độc và chậm lại.",
+              damageMult: 1.0, rangeMult: 1.2, fireRateMult: 1.15, splashRadiusBonus: 35,
+              effectType: "poison", effectValue: 12, effectDuration: 6 },
+          ],
+        },
+        enabled: true,
+      },
+      /* ---- Tháp mới của Giai đoạn 4 ---- */
+      {
+        id: "dao_si", name: "Đạo sĩ", nameVi: "Đạo sĩ",
+        description: "Dùng bùa chú gây SÁT THƯƠNG PHÉP — bỏ qua giáp vật lý, khắc chế địch giáp dày.",
+        icon: "🧙", color: "#6a4f9a", role: "dps", damageType: "magic",
+        cost: 140, damage: 34, range: 145, fireRate: 0.75,
+        projectileSpeed: 430, splashRadius: 0,
+        criticalChance: 12, criticalMultiplier: 2.0, armorPenetration: 0,
+        effectType: "none", effectValue: 0, effectDuration: 0,
+        targetPriority: "strongest",
+        maxLevel: 5, upgradeCost: 105, upgradeDamageMult: 0.35, upgradeRangeMult: 0.06,
+        upgradeTree: {
+          branchAt: 3,
+          branches: [
+            { id: "loi_phu", name: "Lôi Phù", icon: "⚡",
+              description: "Bùa sấm sét đánh choáng mục tiêu và lan sát thương.",
+              damageMult: 1.15, rangeMult: 1.1, fireRateMult: 1.0, splashRadiusBonus: 35,
+              effectType: "stun", effectValue: 1, effectDuration: 0.7 },
+            { id: "bua_yem", name: "Bùa Yểm", icon: "🔮",
+              description: "Yểm bùa trực diện: sát thương phép đơn mục tiêu cực lớn.",
+              damageMult: 1.75, rangeMult: 1.15, fireRateMult: 0.9,
+              critChanceBonus: 12, critMultiplierBonus: 0.4 },
+          ],
+        },
+        enabled: true,
+      },
+      {
+        id: "tam_doc", name: "Bẫy tẩm độc", nameVi: "Bẫy tẩm độc",
+        description: "Phi tiêu tẩm độc: sát thương ban đầu thấp nhưng gây ĐỘC bào mòn máu địch rất lâu.",
+        icon: "☠️", color: "#4f7a3a", role: "control", damageType: "magic",
+        cost: 95, damage: 7, range: 125, fireRate: 1.3,
+        projectileSpeed: 480, splashRadius: 0,
+        criticalChance: 5, criticalMultiplier: 1.5, armorPenetration: 0,
+        effectType: "poison", effectValue: 10, effectDuration: 6,
+        targetPriority: "strongest",
+        maxLevel: 5, upgradeCost: 70, upgradeDamageMult: 0.22, upgradeRangeMult: 0.06,
+        upgradeTree: {
+          branchAt: 3,
+          branches: [
+            { id: "kich_doc", name: "Kịch Độc", icon: "🧪",
+              description: "Nọc độc cực mạnh, mỗi giây bào mòn lượng máu lớn.",
+              damageMult: 1.2, rangeMult: 1.05, fireRateMult: 1.0,
+              effectType: "poison", effectValue: 24, effectDuration: 8 },
+            { id: "doc_lan", name: "Độc Lan", icon: "🌫️",
+              description: "Độc bay lan cả cụm địch xung quanh mục tiêu.",
+              damageMult: 1.1, rangeMult: 1.2, fireRateMult: 1.2, splashRadiusBonus: 55,
+              effectType: "poison", effectValue: 13, effectDuration: 6 },
+          ],
+        },
+        enabled: true,
+      },
+      {
+        id: "trong_dong", name: "Trống đồng", nameVi: "Trống đồng",
+        description: "Tháp HỖ TRỢ: không tự bắn, nhưng tăng sát thương và tốc bắn cho mọi tháp xung quanh.",
+        icon: "🥁", color: "#b8862b", role: "support", damageType: "physical",
+        cost: 160, damage: 0, range: 150, fireRate: 0,
+        projectileSpeed: 0, splashRadius: 0,
+        criticalChance: 0, criticalMultiplier: 1, armorPenetration: 0,
+        effectType: "none", effectValue: 0, effectDuration: 0,
+        targetPriority: "first",
+        isSupport: true, auraDamageBonus: 0.18, auraFireRateBonus: 0.15, auraRangeBonus: 0.05,
+        maxLevel: 5, upgradeCost: 120, upgradeDamageMult: 0, upgradeRangeMult: 0.08,
+        upgradeAuraMult: 0.22, // mỗi cấp cộng thêm 22% hiệu lực hào quang
+        upgradeTree: {
+          branchAt: 3,
+          branches: [
+            { id: "trong_tran_co", name: "Trống Trận", icon: "🥁",
+              description: "Nhịp trống dồn dập: ưu tiên tăng mạnh TỐC BẮN cho tháp quanh vùng.",
+              rangeMult: 1.1, auraDamageBonusAdd: 0.05, auraFireRateBonusAdd: 0.35 },
+            { id: "trong_dong_son", name: "Trống Đông Sơn", icon: "🌞",
+              description: "Uy linh trống đồng cổ: ưu tiên tăng mạnh SÁT THƯƠNG và tầm bắn.",
+              rangeMult: 1.35, auraDamageBonusAdd: 0.34, auraFireRateBonusAdd: 0.04 },
+          ],
+        },
         enabled: true,
       },
     ];
   }
 
+  /* ---------------------------------------------------------
+     QUÂN ĐỊCH (Giai đoạn 4)
+     Mỗi loại địch có HÀNH VI (behavior) riêng, được engine
+     (js/entities.js) xử lý thật sự chứ không chỉ khác màu:
+       normal   - đi thẳng theo đường, không có gì đặc biệt
+       dash     - định kỳ tăng tốc đột ngột (xung phong)
+       armored  - giáp dày, KHÁNG CHÍ MẠNG (critResist)
+       flying   - bay thẳng tới thành, bỏ qua khúc quanh của đường đi
+       healer   - định kỳ hồi máu cho đồng đội xung quanh
+       shield   - có lớp khiên hấp thụ sát thương, tự hồi khi không bị đánh
+       regen    - tự hồi máu liên tục theo % máu tối đa
+       splitter - khi chết tách ra thành nhiều con nhỏ hơn
+     defense = giáp vật lý (trừ phẳng ST vật lý)
+     resistance = kháng vật lý theo % ; magicResist = kháng phép theo %
+     --------------------------------------------------------- */
   function defaultEnemies() {
     return [
       {
         id: "quan_su_quan", name: "Quân sứ quân",
         hp: 40, speed: 55, reward: 8, rewardExp: 4, damage: 1,
-        defense: 0, resistance: 0,
+        defense: 0, resistance: 0, magicResist: 0,
+        behavior: "normal",
+        description: "Bộ binh thường của các sứ quân, đông nhưng yếu.",
         color: "#8a4a3a", radius: 12, icon: "🛡", enabled: true,
       },
       {
         id: "ky_binh", name: "Kỵ binh",
         hp: 28, speed: 95, reward: 10, rewardExp: 5, damage: 1,
-        defense: 0, resistance: 0,
+        defense: 0, resistance: 0, magicResist: 0,
+        behavior: "dash", dashInterval: 4, dashDuration: 1.2, dashSpeedMult: 1.8,
+        description: "Di chuyển nhanh, định kỳ phi nước đại vượt qua tầm bắn.",
         color: "#5a5a8a", radius: 11, icon: "🐎", enabled: true,
       },
       {
         id: "truong_giap", name: "Trường giáp binh",
         hp: 90, speed: 40, reward: 16, rewardExp: 8, damage: 2,
-        defense: 2, resistance: 0,
+        defense: 2, resistance: 0, magicResist: 0,
+        behavior: "normal",
+        description: "Bộ binh giáp trung bình, chậm chạp nhưng dai sức.",
         color: "#4a4a4a", radius: 14, icon: "⚔", enabled: true,
       },
       {
         id: "cung_thu_dich", name: "Cung thủ địch",
         hp: 34, speed: 48, reward: 12, rewardExp: 6, damage: 1,
-        defense: 0, resistance: 10,
+        defense: 0, resistance: 10, magicResist: 0,
+        behavior: "normal",
+        description: "Nhẹ giáp, kháng nhẹ sát thương vật lý.",
         color: "#6a5a2f", radius: 12, icon: "🏹", enabled: true,
       },
       {
         id: "tuong_giac", name: "Tướng giặc",
         hp: 260, speed: 38, reward: 60, rewardExp: 30, damage: 4,
-        defense: 4, resistance: 0,
+        defense: 4, resistance: 0, magicResist: 10,
+        behavior: "normal",
+        description: "Chỉ huy cấp thấp, máu dày và gây nhiều sát thương cho thành.",
         color: "#7a1f2b", radius: 18, icon: "👑", enabled: true,
       },
       {
         id: "thiet_ky", name: "Thiết kỵ",
         hp: 140, speed: 58, reward: 22, rewardExp: 11, damage: 3,
-        defense: 5, resistance: 0,
+        defense: 5, resistance: 0, magicResist: 0,
+        behavior: "armored", critResist: 70,
+        description: "Kỵ binh bọc thép: giáp dày và rất khó bị chí mạng. Dùng sát thương phép để khắc chế.",
         color: "#39395c", radius: 15, icon: "🏇", enabled: true,
       },
       {
         id: "cung_no_tong", name: "Cung nỏ Tống",
         hp: 60, speed: 46, reward: 18, rewardExp: 9, damage: 2,
-        defense: 0, resistance: 25,
+        defense: 0, resistance: 25, magicResist: 0,
+        behavior: "normal",
+        description: "Kháng vật lý cao, nên dùng tháp phép để hạ.",
         color: "#5a4a2f", radius: 12, icon: "🎯", enabled: true,
+      },
+      /* ---- Quân địch mới của Giai đoạn 4 ---- */
+      {
+        id: "dieu_hau", name: "Diều hâu trinh sát",
+        hp: 55, speed: 78, reward: 20, rewardExp: 10, damage: 2,
+        defense: 0, resistance: 0, magicResist: 20,
+        behavior: "flying",
+        description: "BAY thẳng tới thành, không đi theo đường bộ — phải bố trí tháp trên đường bay.",
+        color: "#7a6a4a", radius: 12, icon: "🦅", enabled: true,
+      },
+      {
+        id: "thay_mo", name: "Thầy mo",
+        hp: 80, speed: 44, reward: 26, rewardExp: 14, damage: 1,
+        defense: 1, resistance: 0, magicResist: 35,
+        behavior: "healer", healInterval: 3, healRadius: 110, healPercent: 8,
+        description: "HỒI MÁU cho đồng đội xung quanh — nên tiêu diệt trước tiên.",
+        color: "#3f6a4a", radius: 13, icon: "🧿", enabled: true,
+      },
+      {
+        id: "khien_chan", name: "Lính khiên chắn",
+        hp: 110, speed: 42, reward: 24, rewardExp: 12, damage: 2,
+        defense: 3, resistance: 0, magicResist: 0,
+        behavior: "shield", shieldAmount: 90, shieldRegenDelay: 4, shieldRegenRate: 22,
+        description: "Có lớp KHIÊN hấp thụ sát thương, tự hồi lại nếu ngừng bị đánh.",
+        color: "#4a6a7a", radius: 14, icon: "🛡️", enabled: true,
+      },
+      {
+        id: "ma_binh", name: "Ma binh",
+        hp: 130, speed: 50, reward: 28, rewardExp: 15, damage: 3,
+        defense: 1, resistance: 0, magicResist: 45,
+        behavior: "regen", regenPercent: 3,
+        description: "Kháng phép rất cao và TỰ HỒI MÁU liên tục — phải dứt điểm nhanh bằng sát thương vật lý.",
+        color: "#5c3a6a", radius: 14, icon: "👻", enabled: true,
+      },
+      {
+        id: "quy_tot", name: "Quỷ tốt",
+        hp: 120, speed: 52, reward: 24, rewardExp: 12, damage: 2,
+        defense: 2, resistance: 0, magicResist: 0,
+        behavior: "splitter", splitInto: "quan_su_quan", splitCount: 2, splitHpPercent: 45,
+        description: "Khi bị hạ sẽ TÁCH thành 2 quân nhỏ hơn tại chỗ.",
+        color: "#6a3a3a", radius: 15, icon: "👺", enabled: true,
+      },
+      {
+        id: "tho_phi", name: "Thổ phỉ",
+        hp: 46, speed: 88, reward: 14, rewardExp: 7, damage: 1,
+        defense: 0, resistance: 0, magicResist: 0,
+        behavior: "dash", dashInterval: 3, dashDuration: 1, dashSpeedMult: 2.1,
+        description: "Cực nhanh, chuyên luồn qua khe hở phòng thủ.",
+        color: "#8a6a2f", radius: 11, icon: "🗡", enabled: true,
       },
     ];
   }
@@ -238,7 +530,7 @@ const DataService = (() => {
     return [
       {
         id: "boss_hoa_lu", name: "Sứ Quân Hoả Long",
-        hp: 900, damage: 6, defense: 6, resistance: 10,
+        hp: 900, damage: 6, defense: 6, resistance: 10, magicResist: 8,
         speed: 34, reward: 200, rewardExp: 80,
         skill: "Cuồng nộ (+30% tốc độ khi máu dưới 30%)",
         skillCooldown: 0,
@@ -256,7 +548,7 @@ const DataService = (() => {
       },
       {
         id: "boss_dai_la", name: "Đô Hộ Sứ Cao Chính Bình",
-        hp: 1500, damage: 8, defense: 8, resistance: 15,
+        hp: 1500, damage: 8, defense: 8, resistance: 15, magicResist: 12,
         speed: 36, reward: 320, rewardExp: 140,
         skill: "Triệu hồi thêm 3 kỵ binh khi máu dưới 50%",
         skillCooldown: 0,
@@ -266,6 +558,11 @@ const DataService = (() => {
         phases: defaultBossPhases(),
         abilities: [
           {
+            id: "khien_thanh", name: "Khiên Thành Đồng",
+            trigger: { type: "hp_below", percent: 70 }, cooldown: 26,
+            effect: "shield_self", shieldPercent: 18,
+          },
+          {
             id: "trieu_hoi", name: "Triệu Hồi",
             trigger: { type: "hp_below", percent: 50 }, cooldown: 22,
             effect: "summon", summonType: "ky_binh", summonCount: 3,
@@ -274,7 +571,7 @@ const DataService = (() => {
       },
       {
         id: "boss_bach_dang", name: "Thuỷ Tặc Chúa",
-        hp: 2400, damage: 10, defense: 10, resistance: 20,
+        hp: 2400, damage: 10, defense: 10, resistance: 20, magicResist: 16,
         speed: 32, reward: 500, rewardExp: 240,
         skill: "Hồi 5% máu tối đa mỗi 5 giây",
         skillCooldown: 0,
@@ -284,6 +581,11 @@ const DataService = (() => {
         phases: defaultBossPhases(),
         abilities: [
           {
+            id: "song_nhan_chim", name: "Sóng Nhấn Chìm",
+            trigger: { type: "interval", seconds: 14 }, cooldown: 14,
+            effect: "tower_disable", disableRadius: 150, disableSeconds: 3,
+          },
+          {
             id: "hoi_sinh_luc", name: "Hồi Sinh Lực",
             trigger: { type: "interval", seconds: 5 }, cooldown: 5,
             effect: "heal_self", healPercent: 5,
@@ -292,7 +594,7 @@ const DataService = (() => {
       },
       {
         id: "boss_hau_nhan_bao", name: "Hầu Nhân Bảo",
-        hp: 3400, damage: 12, defense: 12, resistance: 20,
+        hp: 3400, damage: 12, defense: 12, resistance: 20, magicResist: 16,
         speed: 34, reward: 650, rewardExp: 320,
         skill: "Xung phong ải hẹp (+25% sát thương khi HP trên 70%)",
         skillCooldown: 0,
@@ -302,6 +604,11 @@ const DataService = (() => {
         phases: defaultBossPhases(),
         abilities: [
           {
+            id: "khien_sat", name: "Khiên Sắt Tống Binh",
+            trigger: { type: "hp_below", percent: 55 }, cooldown: 24,
+            effect: "shield_self", shieldPercent: 22,
+          },
+          {
             id: "xung_phong", name: "Xung Phong Ải Hẹp",
             trigger: { type: "hp_above", percent: 70 }, continuous: true,
             effect: "self_buff", speedBonus: 0, damageBonus: 0.25,
@@ -310,7 +617,7 @@ const DataService = (() => {
       },
       {
         id: "boss_quach_quan_bien", name: "Quách Quân Biện",
-        hp: 4300, damage: 14, defense: 14, resistance: 22,
+        hp: 4300, damage: 14, defense: 14, resistance: 22, magicResist: 17,
         speed: 33, reward: 800, rewardExp: 380,
         skill: "Triệu hồi thêm 4 cung nỏ khi máu dưới 40%",
         skillCooldown: 0,
@@ -328,7 +635,7 @@ const DataService = (() => {
       },
       {
         id: "boss_giac_phuong_bac", name: "Đại Tướng Xâm Lăng",
-        hp: 5600, damage: 16, defense: 16, resistance: 25,
+        hp: 5600, damage: 16, defense: 16, resistance: 25, magicResist: 20,
         speed: 32, reward: 1000, rewardExp: 500,
         skill: "Cuồng nộ toàn phần (+40% sát thương khi máu dưới 25%)",
         skillCooldown: 0,
@@ -338,6 +645,11 @@ const DataService = (() => {
         phases: defaultBossPhases(),
         abilities: [
           {
+            id: "tram_co", name: "Trảm Cờ Hiệu",
+            trigger: { type: "interval", seconds: 12 }, cooldown: 12,
+            effect: "tower_disable", disableRadius: 175, disableSeconds: 3.5,
+          },
+          {
             id: "cuong_no_toan_phan", name: "Cuồng Nộ Toàn Phần",
             trigger: { type: "hp_below", percent: 25 }, once: true,
             effect: "self_buff", speedBonus: 0.1, damageBonus: 0.4,
@@ -346,7 +658,7 @@ const DataService = (() => {
       },
       {
         id: "boss_nguyen_sieu", name: "Sứ Quân Nguyễn Siêu",
-        hp: 6800, damage: 18, defense: 18, resistance: 26,
+        hp: 6800, damage: 18, defense: 18, resistance: 26, magicResist: 20,
         speed: 34, reward: 1250, rewardExp: 600,
         skill: "Cố Thủ Cổ Loa (hồi 4% máu tối đa mỗi 4 giây, +15% Defense khi máu dưới 60%)",
         skillCooldown: 0,
@@ -369,7 +681,7 @@ const DataService = (() => {
       },
       {
         id: "boss_do_canh_thac", name: "Sứ Quân Đỗ Cảnh Thạc",
-        hp: 8200, damage: 20, defense: 20, resistance: 28,
+        hp: 8200, damage: 20, defense: 20, resistance: 28, magicResist: 22,
         speed: 33, reward: 1600, rewardExp: 750,
         skill: "Song Kiếm Hợp Bích (+35% tốc độ đánh khi HP<50%, triệu hồi 4 Thiết kỵ khi HP<30%)",
         skillCooldown: 0,
@@ -378,6 +690,16 @@ const DataService = (() => {
         enabled: true,
         phases: defaultBossPhases(),
         abilities: [
+          {
+            id: "kim_chung_trao", name: "Kim Chung Trạo",
+            trigger: { type: "hp_below", percent: 65 }, cooldown: 20,
+            effect: "shield_self", shieldPercent: 25,
+          },
+          {
+            id: "pha_tran", name: "Phá Trận",
+            trigger: { type: "interval", seconds: 15 }, cooldown: 15,
+            effect: "tower_disable", disableRadius: 190, disableSeconds: 4,
+          },
           {
             id: "song_kiem_hop_bich", name: "Song Kiếm Hợp Bích",
             trigger: { type: "hp_below", percent: 50 }, once: true,
@@ -391,6 +713,91 @@ const DataService = (() => {
         ],
       },
     ];
+  }
+
+  /* ---------------------------------------------------------
+     ĐỊA HÌNH BẢN ĐỒ (Giai đoạn 4)
+     Mỗi màn có một "theme" quyết định bảng màu nền + loại chướng ngại
+     vật, và một danh sách chướng ngại vật (obstacles) THẬT được vẽ trên
+     canvas. Chướng ngại vật không nằm đè lên đường đi hay ô xây tháp -
+     chúng thu hẹp không gian nhìn và định hình chiến trường.
+     --------------------------------------------------------- */
+  const STAGE_THEMES = {
+    hoa_lu: "karst",      // núi đá vôi Ninh Bình
+    dai_la: "citadel",    // thành luỹ gạch
+    bach_dang: "river",   // sông nước, bãi cọc
+    chi_lang: "mountain", // ải núi hiểm trở
+    binh_lo: "river",
+    thang_long: "citadel",
+    co_loa: "citadel",
+    sieu_loai: "field",   // đồng bằng, luỹ tre
+  };
+
+  const THEME_OBSTACLES = {
+    karst: ["rock", "rock", "tree"],
+    citadel: ["wall", "rock", "banner"],
+    river: ["water", "stake", "water"],
+    mountain: ["rock", "rock", "wall"],
+    field: ["tree", "tree", "banner"],
+    plain: ["rock", "tree"],
+  };
+
+  /* PRNG tất định theo id màn: cùng một màn luôn cho ra cùng một địa hình,
+     không bị "nhảy múa" mỗi lần tải lại trang. */
+  function seededRandom(seedStr) {
+    let h = 2166136261;
+    for (let i = 0; i < seedStr.length; i++) {
+      h ^= seedStr.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return function () {
+      h += 0x6d2b79f5;
+      let t = h;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function distToSegment(px, py, a, b) {
+    const vx = b.x - a.x, vy = b.y - a.y;
+    const wx = px - a.x, wy = py - a.y;
+    const len2 = vx * vx + vy * vy;
+    let t = len2 ? (wx * vx + wy * vy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const cx = a.x + vx * t, cy = a.y + vy * t;
+    return Math.hypot(px - cx, py - cy);
+  }
+
+  /* Sinh chướng ngại vật cho một màn: thử ngẫu nhiên (có hạt giống) các vị
+     trí, loại bỏ mọi vị trí quá gần ĐƯỜNG ĐI, Ô XÂY THÁP, THÀNH hoặc một
+     chướng ngại vật khác. Nhờ vậy địa hình không bao giờ che mất lối chơi. */
+  function generateObstacles(stage, count) {
+    const theme = stage.theme || STAGE_THEMES[stage.id] || "plain";
+    const kinds = THEME_OBSTACLES[theme] || THEME_OBSTACLES.plain;
+    const rnd = seededRandom("obstacles:" + stage.id);
+    const path = stage.path || [];
+    const spots = stage.buildSpots || [];
+    const castle = stage.castle || { x: -999, y: -999 };
+    const out = [];
+    const want = count || 14;
+    let tries = 0;
+    while (out.length < want && tries < 600) {
+      tries++;
+      const x = 40 + rnd() * 880;
+      const y = 40 + rnd() * 460;
+      const size = 16 + rnd() * 22;
+      let ok = true;
+      for (let i = 0; i < path.length - 1 && ok; i++) {
+        if (distToSegment(x, y, path[i], path[i + 1]) < size + 30) ok = false;
+      }
+      for (const sp of spots) if (ok && Math.hypot(sp.x - x, sp.y - y) < size + 34) ok = false;
+      if (ok && Math.hypot(castle.x - x, castle.y - y) < size + 70) ok = false;
+      for (const o of out) if (ok && Math.hypot(o.x - x, o.y - y) < size + o.size + 10) ok = false;
+      if (!ok) continue;
+      out.push({ type: kinds[Math.floor(rnd() * kinds.length)], x: Math.round(x), y: Math.round(y), size: Math.round(size) });
+    }
+    return out;
   }
 
   function defaultStages() {
@@ -420,7 +827,7 @@ const DataService = (() => {
           { groups: [{ type: "quan_su_quan", count: 6, interval: 0.8 }, { type: "ky_binh", count: 3, interval: 0.7 }] },
           { groups: [{ type: "ky_binh", count: 5, interval: 0.6 }, { type: "truong_giap", count: 3, interval: 1.0 }] },
           { groups: [{ type: "quan_su_quan", count: 8, interval: 0.6 }, { type: "truong_giap", count: 4, interval: 0.9 }] },
-          { groups: [{ type: "ky_binh", count: 8, interval: 0.5 }, { type: "cung_thu_dich", count: 4, interval: 0.7 }] },
+          { groups: [{ type: "ky_binh", count: 8, interval: 0.5 }, { type: "cung_thu_dich", count: 4, interval: 0.7 }, { type: "tho_phi", count: 3, interval: 0.6 }] },
           { waveType: "boss", warning: "⚠ CẢNH BÁO: SỨ QUÂN HOẢ LONG XUẤT HIỆN!",
             groups: [{ type: "truong_giap", count: 5, interval: 0.8 }, { type: "ky_binh", count: 6, interval: 0.5 }, { boss: "boss_hoa_lu" }] },
         ],
@@ -448,11 +855,12 @@ const DataService = (() => {
         waves: [
           { groups: [{ type: "quan_su_quan", count: 10, interval: 0.7 }] },
           { groups: [{ type: "ky_binh", count: 8, interval: 0.55 }, { type: "cung_thu_dich", count: 4, interval: 0.8 }] },
-          { groups: [{ type: "truong_giap", count: 8, interval: 0.7 }, { type: "cung_thu_dich", count: 5, interval: 0.6 }] },
+          { warning: "⚠ ĐỊCH BAY! Diều hâu trinh sát bay thẳng tới thành, bỏ qua đường bộ.",
+            groups: [{ type: "truong_giap", count: 8, interval: 0.7 }, { type: "cung_thu_dich", count: 5, interval: 0.6 }, { type: "dieu_hau", count: 3, interval: 1.1 }] },
           { groups: [{ type: "ky_binh", count: 10, interval: 0.45 }, { type: "truong_giap", count: 6, interval: 0.75 }] },
           { waveType: "elite", warning: "⚠ ĐỢT TINH NHUỆ! Tướng giặc dẫn đầu được tăng cường.",
             groups: [{ type: "tuong_giac", count: 2, interval: 1.2, eliteCount: 2 }, { type: "truong_giap", count: 6, interval: 0.6 }] },
-          { groups: [{ type: "cung_thu_dich", count: 10, interval: 0.5 }, { type: "ky_binh", count: 10, interval: 0.45 }] },
+          { groups: [{ type: "cung_thu_dich", count: 10, interval: 0.5 }, { type: "ky_binh", count: 10, interval: 0.45 }, { type: "khien_chan", count: 4, interval: 0.9 }] },
           { waveType: "boss", warning: "⚠ CẢNH BÁO: ĐÔ HỘ SỨ CAO CHÍNH BÌNH XUẤT HIỆN!",
             groups: [{ type: "truong_giap", count: 8, interval: 0.5 }, { type: "cung_thu_dich", count: 6, interval: 0.5 }, { boss: "boss_dai_la" }] },
         ],
@@ -483,7 +891,8 @@ const DataService = (() => {
           { groups: [{ type: "cung_thu_dich", count: 10, interval: 0.5 }, { type: "truong_giap", count: 6, interval: 0.7 }] },
           { waveType: "fast", warning: "⚠ ĐỢT NHANH! Nước rút, quân địch di chuyển thần tốc.",
             groups: [{ type: "tuong_giac", count: 3, interval: 1.0 }, { type: "ky_binh", count: 10, interval: 0.4, speedMultiplier: 1.35 }] },
-          { groups: [{ type: "truong_giap", count: 12, interval: 0.5 }, { type: "cung_thu_dich", count: 8, interval: 0.45 }] },
+          { warning: "⚠ CÓ THẦY MO! Hắn hồi máu cho đồng đội - hạ hắn trước.",
+            groups: [{ type: "truong_giap", count: 12, interval: 0.5 }, { type: "cung_thu_dich", count: 8, interval: 0.45 }, { type: "thay_mo", count: 2, interval: 1.2 }] },
           { groups: [{ type: "tuong_giac", count: 4, interval: 0.8 }, { type: "truong_giap", count: 10, interval: 0.4 }] },
           { groups: [{ type: "ky_binh", count: 14, interval: 0.35, speedMultiplier: 1.2 }, { type: "cung_thu_dich", count: 8, interval: 0.5 }] },
           { waveType: "boss", warning: "⚠ CẢNH BÁO: THUỶ TẶC CHÚA XUẤT HIỆN!",
@@ -516,10 +925,10 @@ const DataService = (() => {
           { warning: "⚠ PHỤC KÍCH! Cẩn thận quân địch từ phía sau.",
             groups: [{ type: "ky_binh", count: 8, interval: 0.5 }, { type: "cung_thu_dich", count: 5, interval: 0.6, delay: 3.5 }] },
           { groups: [{ type: "truong_giap", count: 10, interval: 0.6 }, { type: "thiet_ky", count: 4, interval: 0.9 }] },
-          { groups: [{ type: "cung_no_tong", count: 8, interval: 0.6 }, { type: "ky_binh", count: 10, interval: 0.4 }] },
+          { groups: [{ type: "cung_no_tong", count: 8, interval: 0.6 }, { type: "ky_binh", count: 10, interval: 0.4 }, { type: "ma_binh", count: 4, interval: 0.9 }] },
           { warning: "⚠ PHỤC KÍCH! Tướng giặc bất ngờ xuất hiện giữa trận.",
             groups: [{ type: "thiet_ky", count: 6, interval: 0.7 }, { type: "tuong_giac", count: 4, interval: 0.9, delay: 6 }] },
-          { groups: [{ type: "cung_no_tong", count: 10, interval: 0.5 }, { type: "thiet_ky", count: 8, interval: 0.55 }] },
+          { groups: [{ type: "cung_no_tong", count: 10, interval: 0.5 }, { type: "thiet_ky", count: 8, interval: 0.55 }, { type: "dieu_hau", count: 4, interval: 0.8 }] },
           { waveType: "boss", warning: "⚠ CẢNH BÁO: HẦU NHÂN BẢO XUẤT HIỆN!",
             groups: [{ type: "truong_giap", count: 10, interval: 0.4 }, { type: "thiet_ky", count: 8, interval: 0.6 }, { boss: "boss_hau_nhan_bao" }] },
         ],
@@ -548,9 +957,10 @@ const DataService = (() => {
           { waveType: "swarm", warning: "⚠ ĐỢT QUÂN ĐÔNG! Số lượng áp đảo nhưng máu mỏng.",
             groups: [{ type: "ky_binh", count: 20, interval: 0.3, hpMultiplier: 0.6 }] },
           { groups: [{ type: "cung_no_tong", count: 10, interval: 0.5 }, { type: "truong_giap", count: 6, interval: 0.7 }] },
-          { groups: [{ type: "thiet_ky", count: 8, interval: 0.6 }, { type: "cung_thu_dich", count: 8, interval: 0.5 }] },
+          { warning: "⚠ QUỶ TỐT! Bị hạ sẽ tách đôi tại chỗ.",
+            groups: [{ type: "thiet_ky", count: 8, interval: 0.6 }, { type: "cung_thu_dich", count: 8, interval: 0.5 }, { type: "quy_tot", count: 6, interval: 0.8 }] },
           { groups: [{ type: "tuong_giac", count: 4, interval: 0.8 }, { type: "cung_no_tong", count: 10, interval: 0.45 }] },
-          { groups: [{ type: "thiet_ky", count: 10, interval: 0.5 }, { type: "ky_binh", count: 12, interval: 0.4 }] },
+          { groups: [{ type: "thiet_ky", count: 10, interval: 0.5 }, { type: "ky_binh", count: 12, interval: 0.4 }, { type: "thay_mo", count: 3, interval: 1.0 }, { type: "khien_chan", count: 4, interval: 0.8 }] },
           { groups: [{ type: "tuong_giac", count: 5, interval: 0.75 }, { type: "cung_no_tong", count: 12, interval: 0.4 }] },
           { waveType: "boss", warning: "⚠ CẢNH BÁO: QUÁCH QUÂN BIỆN XUẤT HIỆN!",
             groups: [{ type: "truong_giap", count: 12, interval: 0.4 }, { type: "thiet_ky", count: 10, interval: 0.45 }, { boss: "boss_quach_quan_bien" }] },
@@ -581,7 +991,7 @@ const DataService = (() => {
           { groups: [{ type: "cung_no_tong", count: 12, interval: 0.45 }, { type: "thiet_ky", count: 6, interval: 0.6 }] },
           { waveType: "armor", warning: "⚠ ĐỢT THIẾT GIÁP! Quân địch phòng thủ dày hơn hẳn.",
             groups: [{ type: "truong_giap", count: 14, interval: 0.4, armorBonus: 4 }, { type: "tuong_giac", count: 4, interval: 0.8, armorBonus: 4 }] },
-          { groups: [{ type: "thiet_ky", count: 12, interval: 0.5 }, { type: "cung_no_tong", count: 12, interval: 0.4 }] },
+          { groups: [{ type: "thiet_ky", count: 12, interval: 0.5 }, { type: "cung_no_tong", count: 12, interval: 0.4 }, { type: "ma_binh", count: 5, interval: 0.8 }, { type: "dieu_hau", count: 4, interval: 0.8 }] },
           { groups: [{ type: "tuong_giac", count: 6, interval: 0.7 }, { type: "thiet_ky", count: 10, interval: 0.45 }] },
           { waveType: "survival", surviveSeconds: 30, warning: "⚠ SỐNG SÓT 30 GIÂY! Quân địch sẽ liên tục kéo đến.",
             groups: [{ type: "truong_giap", count: 4, interval: 0.6 }, { type: "cung_no_tong", count: 4, interval: 0.6 }] },
@@ -620,7 +1030,7 @@ const DataService = (() => {
             groups: [{ type: "cung_no_tong", count: 10, interval: 0.45 }, { type: "tuong_giac", count: 3, interval: 0.9, delay: 5 }] },
           { waveType: "elite", warning: "⚠ ĐỢT TINH NHUỆ! Cấm quân của Sứ Quân được tăng cường.",
             groups: [{ type: "tuong_giac", count: 3, interval: 1.0, eliteCount: 3 }, { type: "thiet_ky", count: 8, interval: 0.5 }] },
-          { groups: [{ type: "thiet_ky", count: 14, interval: 0.4 }, { type: "cung_no_tong", count: 12, interval: 0.4 }] },
+          { groups: [{ type: "thiet_ky", count: 14, interval: 0.4 }, { type: "cung_no_tong", count: 12, interval: 0.4 }, { type: "quy_tot", count: 8, interval: 0.6 }, { type: "thay_mo", count: 3, interval: 1.0 }] },
           { waveType: "boss", warning: "⚠ CẢNH BÁO: SỨ QUÂN NGUYỄN SIÊU XUẤT HIỆN!",
             groups: [{ type: "truong_giap", count: 12, interval: 0.4 }, { type: "thiet_ky", count: 10, interval: 0.45 }, { boss: "boss_nguyen_sieu" }] },
         ],
@@ -650,7 +1060,7 @@ const DataService = (() => {
           { groups: [{ type: "thiet_ky", count: 14, interval: 0.4 }] },
           { waveType: "swarm", warning: "⚠ ĐỢT QUÂN ĐÔNG! Tàn quân sứ quân tràn tới từ mọi phía.",
             groups: [{ type: "quan_su_quan", count: 24, interval: 0.25, hpMultiplier: 0.7 }] },
-          { groups: [{ type: "cung_no_tong", count: 14, interval: 0.4 }, { type: "tuong_giac", count: 4, interval: 0.8 }] },
+          { groups: [{ type: "cung_no_tong", count: 14, interval: 0.4 }, { type: "tuong_giac", count: 4, interval: 0.8 }, { type: "ma_binh", count: 6, interval: 0.7 }, { type: "khien_chan", count: 5, interval: 0.8 }, { type: "dieu_hau", count: 5, interval: 0.7 }] },
           { warning: "⚠ PHỤC KÍCH! Kỵ binh vòng ra sau lưng.",
             groups: [{ type: "thiet_ky", count: 12, interval: 0.45 }, { type: "ky_binh", count: 12, interval: 0.35, delay: 5 }] },
           { waveType: "fast", warning: "⚠ ĐỢT NHANH! Kỵ binh tinh nhuệ phi nước đại.",
@@ -667,8 +1077,11 @@ const DataService = (() => {
     // Priority 5 (Score+Combo+3-Sao): gắn starConditions + targetTime THẬT
     // cho từng màn, tăng dần độ khó theo "order", thay vì để trống rồi
     // chỉ hiển thị UI giả (mục LXI - cấm "giả" tính năng).
-    return stages.map((s) => ({
+    return stages.map((s0) => {
+      const s = Object.assign({}, s0, { theme: s0.theme || STAGE_THEMES[s0.id] || "plain" });
+      return {
       ...s,
+      obstacles: s.obstacles || generateObstacles(s, 10 + (s.order || 1)),
       targetTime: s.targetTime || Math.round(s.waves.length * 24 + (s.order || 1) * 6),
       starConditions: s.starConditions || {
         oneStar: true,
@@ -676,98 +1089,161 @@ const DataService = (() => {
         threeStarCastleHpPercent: 80,
         threeStarScore: 500 + (s.order || 1) * 350,
       },
-    }));
+      };
+    });
   }
 
+  /* ---------------------------------------------------------
+     TƯỚNG ĐẠI CỒ VIỆT (Giai đoạn 4)
+     Tướng giờ THỰC SỰ RA TRẬN: đứng trên bản đồ, tự đánh địch trong tầm,
+     có Kỹ năng CHỦ ĐỘNG (nút ✨ / phím S) và Kỹ năng BỊ ĐỘNG (passive)
+     luôn có hiệu lực. Cả hai đều mạnh lên theo Level tướng, và kỹ năng
+     chủ động còn có thể NÂNG CẤP riêng bằng vàng bền vững.
+       hp/damage/defense - chỉ số cộng cho THÀNH và cho MỌI THÁP (bị động nền)
+       heroDamage/heroRange/heroFireRate/heroDamageType - chỉ số đánh nhau
+         của bản thân tướng trên bản đồ
+       passive - kỹ năng bị động: { id, name, description, type, value }
+         type: "tower_damage" | "tower_range" | "tower_firerate" |
+               "gold_bonus" | "castle_regen" | "slow_aura" | "crit_bonus"
+     --------------------------------------------------------- */
   function defaultHeroes() {
     return [
       {
         id: "dinh_bo_linh", name: "Đinh Bộ Lĩnh", nameVi: "Đinh Bộ Lĩnh",
         description: "Người dẹp loạn 12 sứ quân, lập nên nhà nước Đại Cồ Việt.",
         icon: "👑", image: "",
-        hp: 40,           // cộng thẳng vào maxHP của thành khi được chọn
-        damage: 12,        // % cộng thêm sát thương cho MỌI tháp (12 = +12%)
-        defense: 1,        // giảm sát thương thành nhận mỗi khi địch lọt qua (trừ thẳng, tối thiểu 0)
+        hp: 40, damage: 12, defense: 1,
+        heroDamage: 26, heroRange: 150, heroFireRate: 0.9, heroDamageType: "physical",
+        passive: { id: "co_lau_tap_tran", name: "Cờ Lau Tập Trận", type: "tower_damage", value: 0.08,
+          description: "Mọi tháp được +8% sát thương mỗi cấp tướng." },
         level: 1, maxLevel: 5,
         expToUpgrade: 100,
-        unlockCost: 0,     // mở khoá miễn phí, dùng làm tướng khởi đầu
+        unlockCost: 0,
         upgradeCost: 80,
-        skillId: "trong_tran",
+        skillId: "trong_tran", skillMaxLevel: 5, skillUpgradeCost: 120,
         enabled: true,
       },
       {
         id: "le_hoan", name: "Lê Hoàn", nameVi: "Lê Hoàn",
         description: "Thập đạo tướng quân, đánh tan quân Tống trên sông Bạch Đằng.",
         icon: "⚔️", image: "",
-        hp: 25,
-        damage: 20,
-        defense: 0,
+        hp: 25, damage: 20, defense: 0,
+        heroDamage: 34, heroRange: 140, heroFireRate: 1.0, heroDamageType: "physical",
+        passive: { id: "thap_dao_tuong_quan", name: "Thập Đạo Tướng Quân", type: "tower_firerate", value: 0.06,
+          description: "Mọi tháp được +6% tốc bắn mỗi cấp tướng." },
         level: 1, maxLevel: 5,
         expToUpgrade: 120,
         unlockCost: 250,
         upgradeCost: 100,
-        skillId: "mua_ten",
+        skillId: "mua_ten", skillMaxLevel: 5, skillUpgradeCost: 140,
         enabled: true,
       },
       {
         id: "ngo_quyen", name: "Ngô Quyền", nameVi: "Ngô Quyền",
         description: "Anh hùng dân tộc, đại thắng quân Nam Hán trên sông Bạch Đằng năm 938.",
         icon: "🌊", image: "",
-        hp: 35,
-        damage: 15,
-        defense: 2,
+        hp: 35, damage: 15, defense: 2,
+        heroDamage: 28, heroRange: 160, heroFireRate: 0.8, heroDamageType: "magic",
+        passive: { id: "bai_coc_ngam", name: "Bãi Cọc Ngầm", type: "slow_aura", value: 0.05,
+          description: "Địch quanh tướng bị làm chậm thêm 5% mỗi cấp tướng." },
         level: 1, maxLevel: 5,
         expToUpgrade: 140,
         unlockCost: 300,
         upgradeCost: 110,
-        skillId: "coc_go_bach_dang",
+        skillId: "coc_go_bach_dang", skillMaxLevel: 5, skillUpgradeCost: 150,
         enabled: true,
       },
       {
         id: "duong_van_nga", name: "Dương Vân Nga", nameVi: "Dương Vân Nga",
         description: "Thái hậu nhiếp chính, cầu nối giữa hai triều Đinh – Tiền Lê, an dân giữ nước.",
         icon: "👸", image: "",
-        hp: 20,
-        damage: 5,
-        defense: 3,
+        hp: 20, damage: 5, defense: 3,
+        heroDamage: 18, heroRange: 150, heroFireRate: 0.8, heroDamageType: "magic",
+        passive: { id: "an_dan_ho_quoc", name: "An Dân Hộ Quốc", type: "castle_regen", value: 0.5,
+          description: "Thành tự hồi 0,5 HP mỗi đợt cho mỗi cấp tướng." },
         level: 1, maxLevel: 5,
         expToUpgrade: 130,
         unlockCost: 200,
         upgradeCost: 90,
-        skillId: "an_dan",
+        skillId: "an_dan", skillMaxLevel: 5, skillUpgradeCost: 130,
         enabled: true,
       },
       {
         id: "dinh_lien", name: "Đinh Liễn", nameVi: "Đinh Liễn",
         description: "Nam Việt Vương, con trưởng Đinh Bộ Lĩnh, xông pha khắp các trận tiền.",
         icon: "🗡️", image: "",
-        hp: 15,
-        damage: 25,
-        defense: 0,
+        hp: 15, damage: 25, defense: 0,
+        heroDamage: 40, heroRange: 130, heroFireRate: 1.1, heroDamageType: "physical",
+        passive: { id: "xung_tran", name: "Tiên Phong Xung Trận", type: "crit_bonus", value: 3,
+          description: "Mọi tháp được +3% tỉ lệ chí mạng mỗi cấp tướng." },
         level: 1, maxLevel: 5,
         expToUpgrade: 150,
         unlockCost: 220,
         upgradeCost: 95,
-        skillId: "xung_phong",
+        skillId: "xung_phong", skillMaxLevel: 5, skillUpgradeCost: 145,
+        enabled: true,
+      },
+      {
+        id: "nguyen_bac", name: "Nguyễn Bặc", nameVi: "Nguyễn Bặc",
+        description: "Định Quốc công, khai quốc công thần trung nghĩa bậc nhất của nhà Đinh.",
+        icon: "🛡️", image: "",
+        hp: 55, damage: 8, defense: 4,
+        heroDamage: 24, heroRange: 125, heroFireRate: 0.9, heroDamageType: "physical",
+        passive: { id: "trung_nghia", name: "Trung Nghĩa Vệ Quốc", type: "tower_range", value: 0.05,
+          description: "Mọi tháp được +5% tầm bắn mỗi cấp tướng." },
+        level: 1, maxLevel: 5,
+        expToUpgrade: 160,
+        unlockCost: 340,
+        upgradeCost: 120,
+        skillId: "ho_quoc_tran", skillMaxLevel: 5, skillUpgradeCost: 155,
+        enabled: true,
+      },
+      {
+        id: "pham_cu_lang", name: "Phạm Cự Lạng", nameVi: "Phạm Cự Lạng",
+        description: "Thái uý thời Tiền Lê, người suy tôn Lê Hoàn lên ngôi để chống Tống.",
+        icon: "🥁", image: "",
+        hp: 30, damage: 16, defense: 1,
+        heroDamage: 30, heroRange: 155, heroFireRate: 0.95, heroDamageType: "physical",
+        passive: { id: "quan_luong", name: "Quân Lương Dồi Dào", type: "gold_bonus", value: 0.06,
+          description: "Nhận thêm 6% vàng từ mỗi kẻ địch bị hạ, mỗi cấp tướng." },
+        level: 1, maxLevel: 5,
+        expToUpgrade: 165,
+        unlockCost: 380,
+        upgradeCost: 125,
+        skillId: "sam_set_tran_tien", skillMaxLevel: 5, skillUpgradeCost: 160,
         enabled: true,
       },
     ];
   }
 
+  /* ---------------------------------------------------------
+     KỸ NĂNG CHỦ ĐỘNG (Giai đoạn 4)
+     effect được game.js thực thi thật:
+       damage_all     - sát thương lên toàn bộ địch (theo damageType)
+       heal_castle    - hồi HP thành
+       buff_attack_speed - tăng tốc bắn mọi tháp trong `duration` giây
+       buff_damage    - tăng sát thương mọi tháp trong `duration` giây
+       stun_all       - làm choáng toàn bộ địch trong `duration` giây
+       shield_castle  - tăng giáp thành (giảm ST nhận) trong `duration` giây
+     perLevelBonus: mỗi cấp KỸ NĂNG cộng thêm bao nhiêu % hiệu lực.
+     --------------------------------------------------------- */
   function defaultSkills() {
     return [
       {
         id: "hoa_cong", name: "Hoả Công",
-        description: "Thiêu đốt toàn bộ quân địch đang trên bản đồ.",
+        description: "Thiêu đốt toàn bộ quân địch đang trên bản đồ và gây bỏng.",
         icon: "🔥", cooldown: 28, manaCost: 0,
         effect: "damage_all", damage: 45, heal: 0, area: 0, duration: 0,
+        damageType: "magic", perLevelBonus: 0.22,
+        statusEffect: { type: "burn", value: 8, duration: 4 },
         enabled: true,
       },
       {
         id: "mua_ten", name: "Mưa Tên",
-        description: "Một trận mưa tên gây sát thương diện rộng lên quân địch.",
+        description: "Một trận mưa tên gây sát thương vật lý diện rộng lên quân địch.",
         icon: "🏹", cooldown: 20, manaCost: 0,
         effect: "damage_all", damage: 25, heal: 0, area: 0, duration: 0,
+        damageType: "physical", perLevelBonus: 0.22,
         enabled: true,
       },
       {
@@ -775,6 +1251,7 @@ const DataService = (() => {
         description: "Thúc trống tăng 40% tốc độ bắn cho mọi quân thủ thành trong 8 giây.",
         icon: "🥁", cooldown: 35, manaCost: 0,
         effect: "buff_attack_speed", damage: 0, heal: 0, area: 0, duration: 8, value: 0.4,
+        damageType: "physical", perLevelBonus: 0.2,
         enabled: true,
       },
       {
@@ -782,13 +1259,16 @@ const DataService = (() => {
         description: "Ngay lập tức hồi phục một phần HP của thành.",
         icon: "💗", cooldown: 40, manaCost: 0,
         effect: "heal_castle", damage: 0, heal: 6, area: 0, duration: 0,
+        damageType: "physical", perLevelBonus: 0.25,
         enabled: true,
       },
       {
         id: "coc_go_bach_dang", name: "Cọc Gỗ Bạch Đằng",
-        description: "Tái hiện kế cọc ngầm, gây sát thương lớn lên toàn bộ quân địch đang trên bản đồ.",
+        description: "Tái hiện kế cọc ngầm: sát thương lớn lên toàn bộ địch và làm chậm chúng.",
         icon: "🌊", cooldown: 30, manaCost: 0,
         effect: "damage_all", damage: 60, heal: 0, area: 0, duration: 0,
+        damageType: "physical", perLevelBonus: 0.22,
+        statusEffect: { type: "slow", value: 0.5, duration: 3 },
         enabled: true,
       },
       {
@@ -796,6 +1276,7 @@ const DataService = (() => {
         description: "Vỗ về lòng quân, hồi phục đáng kể HP của thành.",
         icon: "👸", cooldown: 45, manaCost: 0,
         effect: "heal_castle", damage: 0, heal: 10, area: 0, duration: 0,
+        damageType: "physical", perLevelBonus: 0.25,
         enabled: true,
       },
       {
@@ -803,6 +1284,23 @@ const DataService = (() => {
         description: "Thúc quân xông trận, tăng mạnh tốc độ bắn cho mọi quân thủ thành trong 10 giây.",
         icon: "🗡️", cooldown: 32, manaCost: 0,
         effect: "buff_attack_speed", damage: 0, heal: 0, area: 0, duration: 10, value: 0.5,
+        damageType: "physical", perLevelBonus: 0.2,
+        enabled: true,
+      },
+      {
+        id: "ho_quoc_tran", name: "Hộ Quốc Trận",
+        description: "Dựng thế trận giữ thành: giảm mạnh sát thương thành phải nhận trong 12 giây.",
+        icon: "🛡️", cooldown: 40, manaCost: 0,
+        effect: "shield_castle", damage: 0, heal: 0, area: 0, duration: 12, value: 4,
+        damageType: "physical", perLevelBonus: 0.22,
+        enabled: true,
+      },
+      {
+        id: "sam_set_tran_tien", name: "Sấm Sét Trận Tiền",
+        description: "Sấm sét giáng xuống làm CHOÁNG toàn bộ quân địch trong 2,5 giây.",
+        icon: "⚡", cooldown: 38, manaCost: 0,
+        effect: "stun_all", damage: 12, heal: 0, area: 0, duration: 2.5,
+        damageType: "magic", perLevelBonus: 0.18,
         enabled: true,
       },
     ];
@@ -1004,10 +1502,11 @@ const DataService = (() => {
         heroesOwned: ["dinh_bo_linh"],
         heroLevels: { dinh_bo_linh: 1 },
         heroExp: { dinh_bo_linh: 0 }, // EXP riêng của từng tướng (Giai đoạn 3), TÁCH BIỆT với exp người chơi ở trên
+        heroSkillLevels: { dinh_bo_linh: 1 }, // cấp KỸ NĂNG chủ động của từng tướng (Giai đoạn 4)
         selectedHero: "dinh_bo_linh",
         questProgress: {},   // { questId: { done:false, claimed:false, progressValue:0 } }
-        stats: { totalKills: 0, totalRuns: 0, wins: 0, losses: 0 },
-        settings: { sound: true, tutorialSeen: false },
+        stats: { totalKills: 0, totalRuns: 0, wins: 0, losses: 0, totalBossKills: 0, towersBuilt: 0, towersSold: 0 },
+        settings: { sound: true, sfx: true, music: true, tutorialSeen: false },
         banned: false,
         createdAt: Date.now(),
       },
@@ -1277,6 +1776,157 @@ const DataService = (() => {
     console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 8: thêm 2 màn chơi mới (Cổ Loa, Siêu Loại) + 2 Boss mới + thêm 1 wave cho mỗi màn cũ.");
   }
 
+  /* ---------------------------------------------------------
+     DI TRÚ 8 -> 9 (Giai đoạn 4)
+     Bổ sung toàn bộ field mới mà engine mới cần, cho dữ liệu người chơi
+     CŨ đã lưu trong localStorage từ bản trước:
+       - Tháp: damageType, role, targetPriority, upgradeTree, aura*
+       - Địch: magicResist, behavior + tham số hành vi
+       - Boss: magicResist + kỹ năng mới (shield_self, tower_disable)
+       - Màn: theme, obstacles
+       - Tướng: chỉ số chiến đấu trên bản đồ + kỹ năng bị động
+       - Người chơi: heroSkillLevels, settings.music/sfx
+       - Cấu hình: SELL_REFUND_RATE, tốc độ x3, cờ nhạc/SFX
+     Nguyên tắc: CHỈ THÊM field còn thiếu, KHÔNG ghi đè giá trị mà người
+     chơi hoặc Admin đã tự chỉnh (vd. giá tháp đã sửa tay vẫn được giữ).
+     --------------------------------------------------------- */
+  function ensureGiaiDoan4Fields() {
+    const fillMissing = (item, defaults) => {
+      const patch = {};
+      for (const k of Object.keys(defaults)) {
+        if (item[k] === undefined || item[k] === null) patch[k] = defaults[k];
+      }
+      return patch;
+    };
+    const byId = (arr) => { const m = {}; for (const x of arr) m[x.id] = x; return m; };
+
+    /* --- Tháp --- */
+    const buildingDefaults = byId(defaultBuildings());
+    const buildings = list("buildings");
+    const buildingIds = new Set(buildings.map((b) => b.id));
+    const patchedBuildings = buildings.map((b) => {
+      const def = buildingDefaults[b.id];
+      const generic = {
+        role: "dps", damageType: "physical", targetPriority: "first",
+        upgradeTree: null, isSupport: false,
+      };
+      return Object.assign({}, b, fillMissing(b, def ? Object.assign({}, generic, def) : generic));
+    });
+    for (const id of Object.keys(buildingDefaults)) {
+      if (!buildingIds.has(id)) patchedBuildings.push(buildingDefaults[id]);
+    }
+    replaceAll("buildings", patchedBuildings);
+
+    /* --- Quân địch --- */
+    const enemyDefaults = byId(defaultEnemies());
+    const enemies = list("enemies");
+    const enemyIds = new Set(enemies.map((e) => e.id));
+    const patchedEnemies = enemies.map((e) => {
+      const def = enemyDefaults[e.id];
+      const generic = { magicResist: 0, behavior: "normal", description: "" };
+      return Object.assign({}, e, fillMissing(e, def ? Object.assign({}, generic, def) : generic));
+    });
+    for (const id of Object.keys(enemyDefaults)) {
+      if (!enemyIds.has(id)) patchedEnemies.push(enemyDefaults[id]);
+    }
+    replaceAll("enemies", patchedEnemies);
+
+    /* --- Boss --- */
+    const bossDefaults = byId(defaultBosses());
+    replaceAll("bosses", list("bosses").map((b) => {
+      const def = bossDefaults[b.id];
+      const patch = fillMissing(b, { magicResist: def ? def.magicResist : Math.round((b.resistance || 0) * 0.8) });
+      // bổ sung các kỹ năng mới (shield_self/tower_disable) nếu boss gốc có
+      if (def && Array.isArray(def.abilities) && Array.isArray(b.abilities)) {
+        const have = new Set(b.abilities.map((a) => a.id));
+        const missing = def.abilities.filter((a) => !have.has(a.id));
+        if (missing.length) patch.abilities = [...b.abilities, ...missing];
+      }
+      return Object.assign({}, b, patch);
+    }));
+
+    /* --- Màn chơi --- */
+    const stageDefaults = byId(defaultStages());
+    replaceAll("stages", list("stages").map((s) => {
+      const def = stageDefaults[s.id];
+      const patch = {};
+      if (s.theme === undefined) patch.theme = (def && def.theme) || STAGE_THEMES[s.id] || "plain";
+      if (!Array.isArray(s.obstacles) || s.obstacles.length === 0) {
+        patch.obstacles = (def && def.obstacles) || generateObstacles(s);
+      }
+      // các đợt quân mới (dùng loại địch mới) chỉ được áp cho màn gốc chưa bị sửa tay
+      if (def && Array.isArray(def.waves) && Array.isArray(s.waves) && def.waves.length === s.waves.length) {
+        patch.waves = def.waves;
+      }
+      return Object.assign({}, s, patch);
+    }));
+
+    /* --- Tướng --- */
+    const heroDefaults = byId(defaultHeroes());
+    replaceAll("heroes", list("heroes").map((h) => {
+      const def = heroDefaults[h.id];
+      const generic = {
+        heroDamage: 24, heroRange: 150, heroFireRate: 0.9, heroDamageType: "physical",
+        passive: null, skillMaxLevel: 5, skillUpgradeCost: 130,
+      };
+      return Object.assign({}, h, fillMissing(h, def ? Object.assign({}, generic, def) : generic));
+    }));
+
+    /* --- Kỹ năng --- */
+    const skillDefaults = byId(defaultSkills());
+    const skills = list("skills");
+    const skillIds = new Set(skills.map((k) => k.id));
+    const patchedSkills = skills.map((k) => {
+      const def = skillDefaults[k.id];
+      return Object.assign({}, k, fillMissing(k, def ? Object.assign({ perLevelBonus: 0.22, damageType: "physical" }, def)
+        : { perLevelBonus: 0.22, damageType: "physical" }));
+    });
+    for (const id of Object.keys(skillDefaults)) {
+      if (!skillIds.has(id)) patchedSkills.push(skillDefaults[id]);
+    }
+    replaceAll("skills", patchedSkills);
+
+    /* --- Người chơi --- */
+    replaceAll("players", list("players").map((p) => {
+      const patch = {};
+      if (!p.heroSkillLevels) {
+        const lv = {};
+        for (const hid of p.heroesOwned || []) lv[hid] = 1;
+        patch.heroSkillLevels = lv;
+      }
+      const st = Object.assign({}, p.settings);
+      if (st.music === undefined) st.music = true;
+      if (st.sfx === undefined) st.sfx = st.sound !== false;
+      patch.settings = st;
+      const stats = Object.assign({ totalKills: 0, totalRuns: 0, wins: 0, losses: 0, totalBossKills: 0, towersBuilt: 0, towersSold: 0 }, p.stats);
+      patch.stats = stats;
+      return Object.assign({}, p, patch);
+    }));
+
+    /* --- Cấu hình game --- */
+    const cfg = getConfig();
+    const defCfg = defaultGameConfig();
+    const cfgPatch = {};
+    if (cfg.SELL_REFUND_RATE === undefined) cfgPatch.SELL_REFUND_RATE = defCfg.SELL_REFUND_RATE;
+    if (cfg.TIDE_CYCLE_SECONDS === undefined) cfgPatch.TIDE_CYCLE_SECONDS = defCfg.TIDE_CYCLE_SECONDS;
+    if (!Array.isArray(cfg.speeds) || cfg.speeds.length < 3) cfgPatch.speeds = defCfg.speeds;
+    const feat = Object.assign({}, cfg.features);
+    const defFeat = defCfg.features;
+    for (const k of Object.keys(defFeat)) if (feat[k] === undefined) feat[k] = defFeat[k];
+    if (feat.musicEnabled === false && cfg.features && cfg.features.musicEnabled === false) feat.musicEnabled = true; // bản cũ tắt cứng vì chưa có nhạc
+    cfgPatch.features = feat;
+    setConfig(cfgPatch);
+  }
+
+  /* Di trú schemaVersion 8 -> 9 (Giai đoạn 4: combat/tower/hero/map/audio). */
+  function migrateSchemaV8ToV9() {
+    const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
+    if (currentVersion >= 9) return;
+    ensureGiaiDoan4Fields();
+    StorageService.set(KEYS.schemaVersion, 9);
+    console.info("[DataService] Đã di trú dữ liệu lên schemaVersion 9 (Giai đoạn 4): sát thương phép/giáp/kháng phép, hành vi quân địch, cây nâng cấp tháp, tháp hỗ trợ, tướng ra trận, chướng ngại vật, nhạc nền.");
+  }
+
   function ensureSeeded() {
     const defaults = defaultAll();
     Object.keys(KEYS).forEach((name) => {
@@ -1293,6 +1943,7 @@ const DataService = (() => {
     migrateSchemaV5ToV6();
     migrateSchemaV6ToV7();
     migrateSchemaV7ToV8();
+    migrateSchemaV8ToV9();
     if (!StorageService.has(KEYS.schemaVersion)) {
       StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
     }
@@ -1449,6 +2100,7 @@ const DataService = (() => {
     ensureScoreProgressionFields(); // vá Score/Combo/3-Sao thật nếu snapshot import là bản backup cũ (v5)
     ensureAchievementFields(); // vá Thành tích thật nếu snapshot import là bản backup cũ (v6)
     ensureExpandedCampaignContent(); // vá 2 màn/2 Boss/wave mới nếu snapshot import là bản backup cũ (v7)
+    ensureGiaiDoan4Fields(); // vá toàn bộ field Giai đoạn 4 nếu snapshot import là bản backup cũ (v8)
     StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
   }
 
@@ -1491,6 +2143,9 @@ const DataService = (() => {
         starConditions: stage.starConditions,
         targetTime: stage.targetTime,
         specialMechanic: stage.specialMechanic,
+        // Giai đoạn 4: địa hình/chướng ngại vật của bản đồ
+        theme: stage.theme || "plain",
+        obstacles: Array.isArray(stage.obstacles) ? stage.obstacles : [],
       };
     }
 
@@ -1510,6 +2165,8 @@ const DataService = (() => {
         damage: Math.round(b.damage * (config.BOSS_MULTIPLIER || 1)),
         defense: b.defense || 0,
         resistance: b.resistance || 0,
+        magicResist: b.magicResist || 0,
+        behavior: "boss",
         color: b.color, radius: 22, icon: b.icon,
         boss: true, bossSkill: b.skill,
         phases: Array.isArray(b.phases) ? b.phases : [],
@@ -1528,6 +2185,9 @@ const DataService = (() => {
         startStage: config.START_STAGE,
         enemySpawnRate: config.ENEMY_SPAWN_RATE,
         rewardMultiplier: config.REWARD_MULTIPLIER,
+        sellRefundRate: config.SELL_REFUND_RATE !== undefined ? config.SELL_REFUND_RATE : 0.7,
+        tideCycleSeconds: config.TIDE_CYCLE_SECONDS || 9,
+        soundEnabled: config.features ? config.features.soundEnabled !== false : true,
         features: config.features,
       },
       enemyTypes,

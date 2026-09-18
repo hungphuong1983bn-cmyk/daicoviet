@@ -1,34 +1,30 @@
 /* =========================================================
-   GAME.JS  (Giai đoạn 2)
-   Vòng lặp chính, vẽ bản đồ, sinh quân địch, xử lý xây quân
-   thủ thành, thắng/thua, tốc độ game. Đọc dữ liệu từ GAME_DATA
-   (được DataService dựng lại từ dữ liệu Admin), thao tác thực thể
-   từ entities.js, đọc/ghi qua state.js.
+   GAME.JS  (Giai đoạn 4)
+   Vòng lặp chính, vẽ bản đồ + địa hình, sinh quân địch, xử lý xây/nâng
+   cấp/BÁN quân thủ thành, Tướng ra trận, thắng/thua, tốc độ game.
 
-   MỚI SO VỚI PHIÊN BẢN 1:
-   - Tướng chỉ huy (hero): cộng máu thành, cộng % sát thương tháp,
-     giảm sát thương thành nhận, và mở khoá 1 kỹ năng chủ động.
-   - Kỹ năng chủ động (skill) có thể kích hoạt trong trận qua nút HUD.
-   - Boss xuất hiện ở đợt cuối của mỗi màn (waves[].groups có thể có
-     { boss: bossId } thay vì { type, count, interval }).
-   - Nâng cấp tháp (Tower.upgrade) ngay trong trận bằng vàng của trận.
-   - Nhiệm vụ (QuestService) được đánh giá sau mỗi đợt/màn/hạ Boss.
-   - Cấu hình Admin (ENEMY_SPAWN_RATE, REWARD_MULTIPLIER, debugMode,
-     showDamageNumbers, showEnemyHpBar, showFps, autoSaveEnabled)
-     thực sự ảnh hưởng tới vòng lặp và cách vẽ.
+   MỚI SO VỚI GIAI ĐOẠN 3
+   ----------------------
+   - BÁN THÁP hoàn tiền theo tỉ lệ cấu hình được (mặc định 70% tổng vốn).
+   - CÂY NÂNG CẤP: từ cấp 3 người chơi chọn 1 trong 2 nhánh cho mỗi tháp.
+   - ƯU TIÊN MỤC TIÊU: 7 chế độ, đổi ngay trong trận.
+   - THÁP HỖ TRỢ (Trống đồng) phát hào quang buff tháp xung quanh - engine
+     tính lại hào quang mỗi khi đội hình tháp thay đổi.
+   - TƯỚNG RA TRẬN: đứng cạnh thành, tự đánh, có kỹ năng BỊ ĐỘNG tác động
+     thật lên tháp/vàng/thành và kỹ năng CHỦ ĐỘNG nâng cấp được.
+   - Quân địch có hành vi: hồi máu đồng đội, tách đôi khi chết, bay, khiên...
+   - Boss có thêm chiêu KHIÊN và VÔ HIỆU HOÁ THÁP quanh nó.
+   - ĐỊA HÌNH: mỗi màn có theme + chướng ngại vật riêng được vẽ thật.
+   - SAVE có VERSION: save cũ không tương thích sẽ bị bỏ qua an toàn.
    ========================================================= */
 
-/* Hằng số Score/Combo (Giai đoạn 3, Priority 5). Giữ dạng code constant
-   thay vì thêm field Admin ở bước này để tránh phình schema/migration
-   quá mức trong 1 lượt - có thể chuyển vào GAME_DATA.config sau nếu cần
-   Admin tinh chỉnh cân bằng điểm số. */
 const SCORE_RULES = {
   KILL_BASE: 5,
-  KILL_REWARD_MULT: 1.5,   // điểm = KILL_BASE + reward vàng * hệ số này
+  KILL_REWARD_MULT: 1.5,
   CRIT_BONUS: 10,
   BOSS_KILL_BONUS: 400,
   WAVE_CLEAR_BONUS: 50,
-  COMBO_WINDOW: 2.2,       // giây không giết thêm địch thì combo reset
+  COMBO_WINDOW: 2.2,
   COMBO_SCORE_PER_STACK: 2,
   COMBO_SCORE_CAP_STACK: 20,
   REMAINING_HP_BONUS_MAX: 200,
@@ -36,41 +32,42 @@ const SCORE_RULES = {
   NO_DAMAGE_BONUS: 250,
 };
 
+/* Phiên bản cấu trúc save của MỘT VÁN ĐANG CHƠI. Tăng số này mỗi khi thay
+   đổi hình dạng snapshot theo cách không tương thích ngược -> save cũ sẽ bị
+   bỏ qua thay vì làm vỡ ván chơi mới. */
+const RUN_SAVE_VERSION = 4;
+
 const Game = {
   canvas: null,
   ctx: null,
   levelDef: null,
-
-  /* Phát âm thanh an toàn: nếu js/sound-manager.js không tải được (lỗi
-     mạng, bị chặn, môi trường không có Web Audio) thì game vẫn chạy bình
-     thường, chỉ là im lặng - không bao giờ để âm thanh làm vỡ gameplay. */
-  _sfx(name) {
-    if (typeof SoundManager !== "undefined") SoundManager.play(name);
-  },
-
-  /* trạng thái ván đấu hiện tại */
   run: null,
 
   _rafId: null,
   _lastTs: 0,
   _fpsSamples: [],
+  _auraDirty: true,
+
+  _sfx(name) {
+    if (typeof SoundManager !== "undefined") SoundManager.play(name);
+  },
 
   /* ---------------- KHỞI TẠO ---------------- */
   init(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
-    Enemy.onHit = (x, y, amount, isCritical) => {
+    Enemy.onHit = (x, y, amount, isCritical, damageType) => {
       const cfg = GAME_DATA.config.features || {};
       if (!this.run) return;
       if (isCritical) {
         this.run.critCount++;
         this.run.score += SCORE_RULES.CRIT_BONUS;
         this._sfx("critical");
-      } else {
+      } else if (damageType !== "shield") {
         this._sfx("hit");
       }
       if (cfg.showDamageNumbers === false) return;
-      EffectManager.spawnDamageNumber(x, y, amount, isCritical);
+      EffectManager.spawnDamageNumber(x, y, amount, isCritical, damageType);
     };
     Enemy.onBossEvent = (enemy, event) => {
       if (!this.run) return;
@@ -88,27 +85,50 @@ const Game = {
     };
   },
 
+  /* Chỉ số cộng thêm từ Tướng: chỉ số nền (hp/damage/defense), kỹ năng chủ
+     động và kỹ năng BỊ ĐỘNG (passive) - tất cả đều scale theo Level tướng. */
   _heroBonuses(heroId) {
     const heroDef = heroId && GAME_DATA.generals[heroId];
     if (!heroDef) {
-      return { hpBonus: 0, damagePct: 0, defenseFlat: 0, skillDef: null, heroDef: null };
+      return { hpBonus: 0, damagePct: 0, defenseFlat: 0, skillDef: null, heroDef: null, level: 1, skillLevel: 1, passive: null };
     }
     const player = GameState.getPlayer();
     const level = (player && player.heroLevels && player.heroLevels[heroId]) || heroDef.level || 1;
+    const skillLevel = (player && player.heroSkillLevels && player.heroSkillLevels[heroId]) || 1;
     const scale = 1 + 0.1 * (level - 1);
     return {
       hpBonus: Math.round((heroDef.hp || 0) * scale),
       damagePct: (heroDef.damage || 0) * scale,
       defenseFlat: Math.round((heroDef.defense || 0) * scale),
       skillDef: heroDef.skillId ? GAME_DATA.skills[heroDef.skillId] : null,
+      passive: heroDef.passive || null,
       heroDef,
       level,
+      skillLevel,
     };
   },
 
-  /* Bắt đầu một ván mới ở màn levelId, với tướng heroId (tuỳ chọn) */
+  /* Vị trí đứng của Tướng: ngay trước cổng thành, lệch lên trên một chút để
+     không che mất công trình, và luôn nằm trong khung canvas. */
+  _heroSpawnPoint(levelDef) {
+    const c = levelDef.castle;
+    const w = GAME_DATA.config.canvasWidth, h = GAME_DATA.config.canvasHeight;
+    return {
+      x: Math.max(30, Math.min(w - 30, c.x - 70)),
+      y: Math.max(30, Math.min(h - 30, c.y - 60)),
+    };
+  },
+
+  _makeHeroEntity(heroId, level) {
+    const def = heroId && GAME_DATA.generals[heroId];
+    if (!def) return null;
+    const p = this._heroSpawnPoint(this.levelDef);
+    return new Hero(def, level, p.x, p.y);
+  },
+
+  /* Bắt đầu một ván mới */
   newRun(levelId, heroId) {
-    rebuildGameData(); // luôn lấy dữ liệu mới nhất từ Admin trước khi vào trận
+    rebuildGameData();
     EffectManager.reset();
     const levelDef = GAME_DATA.levels[levelId];
     this.levelDef = levelDef;
@@ -119,6 +139,7 @@ const Game = {
     const maxHp = (config.startingHP || 20) + bonus.hpBonus;
 
     this.run = {
+      saveVersion: RUN_SAVE_VERSION,
       levelId,
       heroId: chosenHero,
       gold: config.startingGold,
@@ -128,9 +149,14 @@ const Game = {
       castleDefense: bonus.defenseFlat,
       skillDef: bonus.skillDef,
       heroLevel: bonus.level || 1,
+      heroSkillLevel: bonus.skillLevel || 1,
+      heroPassive: bonus.passive,
       skillCooldownRemaining: 0,
       towerBuffRemaining: 0,
       towerBuffFireRateMult: 1,
+      towerBuffDamageMult: 1,
+      castleShieldRemaining: 0,
+      castleShieldValue: 0,
       bossKilledThisRun: false,
       waveIndex: -1,
       totalWaves: levelDef.waves.length,
@@ -143,8 +169,8 @@ const Game = {
       enemies: [],
       towers: [],
       projectiles: [],
+      heroEntity: null,
       heroExpGained: 0,
-      // Score/Combo/3-Sao (Giai đoạn 3, Priority 5)
       score: 0,
       combo: 0,
       comboTimer: 0,
@@ -154,7 +180,7 @@ const Game = {
       elapsedTime: 0,
       noDamageTaken: true,
       killCount: 0,
-      // Wave Engine mở rộng (Giai đoạn 3, Priority 4): Special Wave + Tide
+      towersSoldThisRun: 0,
       waveGroupsTemplate: null,
       waveIsSurvival: false,
       waveSurviveTimer: 0,
@@ -163,6 +189,9 @@ const Game = {
       tidePhase: 0,
       _isHighTide: false,
     };
+    this.run.heroEntity = this._makeHeroEntity(chosenHero, bonus.level || 1);
+    this._auraDirty = true;
+    this._startMusic();
     this._startLoop();
   },
 
@@ -171,16 +200,23 @@ const Game = {
     rebuildGameData();
     EffectManager.reset();
     const levelDef = GAME_DATA.levels[snapshot.levelId];
+    if (!levelDef) return false; // Admin đã xoá màn này -> không khôi phục được
     this.levelDef = levelDef;
     const bonus = this._heroBonuses(snapshot.heroId);
     this.run = Object.assign({}, snapshot, {
+      saveVersion: RUN_SAVE_VERSION,
       towerDamageMult: 1 + bonus.damagePct / 100,
       castleDefense: bonus.defenseFlat,
       skillDef: bonus.skillDef,
       heroLevel: bonus.level || 1,
+      heroSkillLevel: bonus.skillLevel || 1,
+      heroPassive: bonus.passive,
       skillCooldownRemaining: 0,
       towerBuffRemaining: 0,
       towerBuffFireRateMult: 1,
+      towerBuffDamageMult: 1,
+      castleShieldRemaining: 0,
+      castleShieldValue: 0,
       bossKilledThisRun: false,
       enemies: [],
       projectiles: [],
@@ -189,9 +225,10 @@ const Game = {
       waveInProgress: false,
       paused: false,
       towers: [],
+      heroEntity: null,
       heroExpGained: snapshot.heroExpGained || 0,
       score: snapshot.score || 0,
-      combo: 0, // combo không có ý nghĩa "tiếp tục" qua lần Continue - bắt đầu lại từ 0
+      combo: 0,
       comboTimer: 0,
       maxCombo: snapshot.maxCombo || 0,
       critCount: snapshot.critCount || 0,
@@ -199,6 +236,7 @@ const Game = {
       elapsedTime: snapshot.elapsedTime || 0,
       noDamageTaken: snapshot.noDamageTaken !== false,
       killCount: snapshot.killCount || 0,
+      towersSoldThisRun: snapshot.towersSoldThisRun || 0,
       waveGroupsTemplate: snapshot.waveGroupsTemplate || null,
       waveIsSurvival: !!snapshot.waveIsSurvival,
       waveSurviveTimer: snapshot.waveSurviveTimer || 0,
@@ -209,19 +247,35 @@ const Game = {
     });
     for (const t of snapshot.towers || []) {
       const spot = levelDef.buildSpots[t.spotIndex];
+      if (!spot || !GAME_DATA.towerTypes[t.typeId]) continue; // dữ liệu đã đổi -> bỏ qua an toàn
       const tower = new Tower(t.typeId, spot.x, spot.y);
       tower.spotIndex = t.spotIndex;
       tower.level = t.level || 1;
+      tower.branchId = t.branchId || null;
+      tower.targetPriority = t.targetPriority || tower.targetPriority;
+      tower.totalInvested = t.totalInvested || tower.def.cost;
       this.run.towers.push(tower);
     }
+    this.run.heroEntity = this._makeHeroEntity(snapshot.heroId, bonus.level || 1);
+    this._auraDirty = true;
+    this._startMusic();
     this._startLoop();
+    return true;
   },
 
-  /* Lấy dữ liệu rút gọn để lưu vào localStorage */
+  _startMusic() {
+    if (typeof SoundManager === "undefined" || !SoundManager.playMusic) return;
+    SoundManager.playMusic((this.levelDef && this.levelDef.theme) || "plain");
+  },
+  stopMusic() {
+    if (typeof SoundManager !== "undefined" && SoundManager.stopMusic) SoundManager.stopMusic();
+  },
+
   snapshot() {
     if (!this.run) return null;
     const r = this.run;
     return {
+      saveVersion: RUN_SAVE_VERSION,
       levelId: r.levelId,
       heroId: r.heroId,
       gold: r.gold,
@@ -231,7 +285,10 @@ const Game = {
       totalWaves: r.totalWaves,
       status: r.status,
       speed: r.speed,
-      towers: r.towers.map(t => ({ spotIndex: t.spotIndex, typeId: t.typeId, level: t.level })),
+      towers: r.towers.map((t) => ({
+        spotIndex: t.spotIndex, typeId: t.typeId, level: t.level,
+        branchId: t.branchId, targetPriority: t.targetPriority, totalInvested: t.totalInvested,
+      })),
       heroExpGained: r.heroExpGained,
       score: r.score,
       maxCombo: r.maxCombo,
@@ -240,6 +297,7 @@ const Game = {
       elapsedTime: r.elapsedTime,
       noDamageTaken: r.noDamageTaken,
       killCount: r.killCount,
+      towersSoldThisRun: r.towersSoldThisRun,
       waveGroupsTemplate: r.waveGroupsTemplate,
       waveIsSurvival: r.waveIsSurvival,
       waveSurviveTimer: r.waveSurviveTimer,
@@ -262,8 +320,14 @@ const Game = {
       this._trackFps(dtReal);
       this._lastTs = ts;
       if (this.run && !this.run.paused && this.run.status === "playing") {
-        const dt = dtReal * this.run.speed;
-        this.update(dt);
+        /* Tốc độ x2/x3 được mô phỏng bằng NHIỀU BƯỚC NHỎ thay vì 1 bước dt
+           lớn: giữ nguyên độ chính xác va chạm/hiệu ứng và tránh địch
+           "nhảy cóc" qua tầm bắn của tháp ở tốc độ cao. */
+        const steps = Math.max(1, Math.round(this.run.speed));
+        const stepDt = (dtReal * this.run.speed) / steps;
+        for (let i = 0; i < steps && this.run && this.run.status === "playing" && !this.run.paused; i++) {
+          this.update(stepDt);
+        }
       }
       this.render();
       this._rafId = requestAnimationFrame(loop);
@@ -281,21 +345,54 @@ const Game = {
     return Math.round(this._fpsSamples.reduce((a, b) => a + b, 0) / this._fpsSamples.length);
   },
 
+  /* ---------------- HÀO QUANG THÁP HỖ TRỢ + BỊ ĐỘNG TƯỚNG ----------------
+     Được tính lại mỗi khi đội hình tháp thay đổi (xây/bán/nâng cấp/chọn
+     nhánh), KHÔNG tính lại mỗi khung hình để khỏi phí CPU. */
+  recomputeAuras() {
+    const r = this.run;
+    if (!r) return;
+    const passive = r.heroPassive;
+    const lvl = r.heroLevel || 1;
+    const heroBuff = { damage: 0, fireRate: 0, range: 0, crit: 0 };
+    if (passive) {
+      const v = (passive.value || 0) * lvl;
+      if (passive.type === "tower_damage") heroBuff.damage = v;
+      else if (passive.type === "tower_firerate") heroBuff.fireRate = v;
+      else if (passive.type === "tower_range") heroBuff.range = v;
+      else if (passive.type === "crit_bonus") heroBuff.crit = v;
+    }
+    for (const t of r.towers) {
+      t._aura = { damage: 0, fireRate: 0, range: 0 };
+      t._heroBuff = heroBuff;
+    }
+    for (const src of r.towers) {
+      if (!src.isSupport) continue;
+      const aura = src.auraOutput();
+      for (const t of r.towers) {
+        if (t === src || t.isSupport) continue;
+        if (Math.hypot(t.x - src.x, t.y - src.y) <= aura.radius) {
+          t._aura.damage += aura.damage;
+          t._aura.fireRate += aura.fireRate;
+          t._aura.range += aura.range;
+        }
+      }
+    }
+    this._auraDirty = false;
+  },
+
   /* ---------------- CẬP NHẬT ---------------- */
   update(dt) {
     const r = this.run;
     const rewardMult = GAME_DATA.config.rewardMultiplier || 1;
     r.elapsedTime += dt;
+    if (this._auraDirty) this.recomputeAuras();
 
-    // đếm ngược Combo (mục XXVI): hết giờ mà không giết thêm địch -> reset
     if (r.comboTimer > 0) {
       r.comboTimer -= dt;
       if (r.comboTimer <= 0) { r.comboTimer = 0; r.combo = 0; }
     }
 
-    // Tide Mechanic (mục VI) - CHỈ áp dụng cho map có specialMechanic:"tide"
-    // (Bạch Đằng): triều dâng làm CHẬM toàn bộ địch đang có mặt, triều rút
-    // làm NHANH hơn - áp dụng thật vào tốc độ di chuyển, không chỉ đổi màu nước.
+    // Cơ chế thuỷ triều (chỉ map có specialMechanic:"tide")
     let mapSpeedMult = 1;
     if (this.levelDef.specialMechanic === "tide") {
       const cycle = GAME_DATA.config.tideCycleSeconds || 9;
@@ -309,8 +406,7 @@ const Game = {
     }
     r.mapSpeedMult = mapSpeedMult;
 
-    // sinh quân theo hàng đợi (Wave Engine mục XXIII - hỗ trợ delay phục
-    // kích qua marker "wait", không phát sinh địch)
+    // --- sinh quân theo hàng đợi ---
     if (r.spawnQueue.length > 0) {
       r.spawnTimer -= dt;
       if (r.spawnTimer <= 0) {
@@ -319,76 +415,141 @@ const Game = {
           r.enemies.push(new Enemy(next.type, this.levelDef.path, {
             speedMultiplier: next.speedMultiplier,
             hpMultiplier: next.hpMultiplier,
+            armorBonus: next.armorBonus,
             elite: next.elite,
           }));
         }
         r.spawnTimer = next.interval;
       }
     } else if (r.waveIsSurvival && r.waveSurviveTimer > 0) {
-      // SURVIVAL WAVE (mục XXIV): hết hàng đợi nhưng chưa hết giờ sống sót
-      // -> tái sinh lại đúng cấu hình nhóm quân của đợt này.
       r.spawnQueue = this._buildSpawnQueue(r.waveGroupsTemplate);
     }
 
-    // cập nhật địch
+    // --- hào quang làm chậm của Tướng (passive slow_aura) ---
+    const heroEnt = r.heroEntity;
+    const slowAura = (r.heroPassive && r.heroPassive.type === "slow_aura")
+      ? (r.heroPassive.value || 0) * (r.heroLevel || 1) : 0;
+
+    // --- cập nhật địch ---
+    const pendingSpawns = [];
     for (const e of r.enemies) {
+      if (slowAura > 0 && heroEnt) {
+        e._extraSlow = Math.hypot(e.x - heroEnt.x, e.y - heroEnt.y) <= heroEnt.range ? slowAura : 0;
+      } else {
+        e._extraSlow = 0;
+      }
       e.update(dt, mapSpeedMult);
+
       if (e.reachedCastle) {
-        const dmg = Math.max(0, e.getEffectiveDamage() - r.castleDefense);
-        if (dmg > 0) r.noDamageTaken = false; // mục XXV "No Damage Bonus"
+        const defense = r.castleDefense + (r.castleShieldRemaining > 0 ? r.castleShieldValue : 0);
+        const dmg = Math.max(0, e.getEffectiveDamage() - defense);
+        if (dmg > 0) {
+          r.noDamageTaken = false;
+          EffectManager.shake(2, 0.15);
+        }
         r.hp -= dmg;
       }
+
       if (e.killed) {
-        const mult = rewardMult * (e.rewardMult || 1);
+        const goldBonus = (r.heroPassive && r.heroPassive.type === "gold_bonus")
+          ? 1 + (r.heroPassive.value || 0) * (r.heroLevel || 1) : 1;
+        const mult = rewardMult * (e.rewardMult || 1) * goldBonus;
         r.gold += Math.round(e.def.reward * mult);
-        r.heroExpGained += Math.round((e.def.rewardExp || 0) * mult);
+        r.heroExpGained += Math.round((e.def.rewardExp || 0) * (rewardMult * (e.rewardMult || 1)));
         r.killCount++;
         GameState.recordKill(1);
         if (e.isBoss) {
           r.bossKilledThisRun = true; r.bossKillCount++; GameState.recordBossKill(1);
           EffectManager.shake(5, 0.45);
           EffectManager.spawnSpark(e.x, e.y, "#ff5c3d", 24);
+        } else {
+          EffectManager.spawnSpark(e.x, e.y, e.def.color || "#e8c873", 4);
         }
         this._addKillScore(e);
+        // ĐỊCH TÁCH ĐÔI: sinh quân con ngay tại vị trí chết
+        if (e.pendingSplits && e.pendingSplits.length) {
+          for (const sp of e.pendingSplits) {
+            if (!GAME_DATA.enemyTypes[sp.type]) continue;
+            for (let i = 0; i < sp.count; i++) {
+              pendingSpawns.push({
+                type: sp.type, x: sp.x + (i - 0.5) * 14, y: sp.y + (i - 0.5) * 10,
+                wpIndex: sp.wpIndex, hpMultiplier: sp.hpPercent / 100,
+              });
+            }
+          }
+          e.pendingSplits.length = 0;
+        }
       }
-      // Boss Skill "Triệu Hồi": rút quân chờ sinh ra khỏi hàng đợi riêng của
-      // Boss rồi đẩy thẳng vào trận, xuất phát tại đúng vị trí Boss hiện tại.
+
+      // THẦY MO hồi máu cho đồng đội quanh nó
+      if (e.pendingHeals && e.pendingHeals.length) {
+        for (const h of e.pendingHeals) {
+          for (const ally of r.enemies) {
+            if (!ally.alive || ally === e) continue;
+            if (Math.hypot(ally.x - h.x, ally.y - h.y) > h.radius) continue;
+            if (ally._poisoned) continue; // trúng độc thì không hồi được
+            const amount = ally.maxHp * (h.percent / 100);
+            ally.hp = Math.min(ally.maxHp, ally.hp + amount);
+          }
+          EffectManager.spawnSpark(h.x, h.y, "#7bc96f", 6);
+        }
+        e.pendingHeals.length = 0;
+      }
+
+      // BOSS: triệu hồi quân
       if (e.isBoss && e.pendingSummons && e.pendingSummons.length > 0) {
         for (const s of e.pendingSummons) {
-          const summonDef = GAME_DATA.enemyTypes[s.type];
-          if (!summonDef) continue; // Admin đã tắt/xoá loại địch này -> bỏ qua an toàn, không crash
+          if (!GAME_DATA.enemyTypes[s.type]) continue;
           for (let i = 0; i < (s.count || 1); i++) {
-            const ne = new Enemy(s.type, this.levelDef.path);
-            ne.wpIndex = e.wpIndex;
-            ne.x = e.x;
-            ne.y = e.y;
-            r.enemies.push(ne);
+            pendingSpawns.push({ type: s.type, x: e.x, y: e.y, wpIndex: e.wpIndex });
           }
         }
         e.pendingSummons.length = 0;
       }
+      // BOSS: vô hiệu hoá tháp quanh nó
+      if (e.isBoss && e.pendingTowerDisables && e.pendingTowerDisables.length > 0) {
+        for (const d of e.pendingTowerDisables) {
+          for (const t of r.towers) {
+            if (Math.hypot(t.x - e.x, t.y - e.y) <= d.radius) {
+              t.disabledFor = Math.max(t.disabledFor, d.seconds);
+              EffectManager.spawnSpark(t.x, t.y, "#ff5c3d", 6);
+            }
+          }
+        }
+        e.pendingTowerDisables.length = 0;
+      }
     }
-    r.enemies = r.enemies.filter(e => e.alive);
 
-    // buff tạm thời từ kỹ năng (vd. Trống Trận)
-    let towerBuff = { fireRateMult: 1, damageMult: r.towerDamageMult };
+    for (const sp of pendingSpawns) {
+      const ne = new Enemy(sp.type, this.levelDef.path, { hpMultiplier: sp.hpMultiplier });
+      ne.wpIndex = sp.wpIndex;
+      ne.x = sp.x;
+      ne.y = sp.y;
+      r.enemies.push(ne);
+    }
+
+    // dọn địch đã chết -> không giữ lại object rác trong bộ nhớ
+    if (r.enemies.some((e) => !e.alive)) r.enemies = r.enemies.filter((e) => e.alive);
+
+    // --- buff tạm thời từ kỹ năng ---
+    const towerBuff = { fireRateMult: 1, damageMult: r.towerDamageMult };
     if (r.towerBuffRemaining > 0) {
       r.towerBuffRemaining -= dt;
       towerBuff.fireRateMult = r.towerBuffFireRateMult;
+      towerBuff.damageMult *= r.towerBuffDamageMult;
     }
+    if (r.castleShieldRemaining > 0) r.castleShieldRemaining -= dt;
     if (r.skillCooldownRemaining > 0) r.skillCooldownRemaining -= dt;
 
-    // cập nhật tháp
+    // --- tháp + tướng + đạn ---
     for (const t of r.towers) t.update(dt, r.enemies, r.projectiles, towerBuff);
-
-    // cập nhật đạn
+    if (heroEnt) heroEnt.update(dt, r.enemies);
     for (const p of r.projectiles) p.update(dt, r.enemies);
-    r.projectiles = r.projectiles.filter(p => p.alive);
+    if (r.projectiles.some((p) => !p.alive)) r.projectiles = r.projectiles.filter((p) => p.alive);
 
-    // cập nhật hiệu ứng hình ảnh (số sát thương, tia lửa chí mạng...)
     EffectManager.update(dt);
 
-    // thua
+    // --- thua ---
     if (r.hp <= 0) {
       r.hp = 0;
       r.status = "lost";
@@ -396,33 +557,29 @@ const Game = {
       GameState.recordRunResult(false);
       this._grantHeroExp();
       const stats = this._finalizeScore(false);
+      this.stopMusic();
       this._sfx("defeat");
       UI.onGameEnded(false, stats);
       return;
     }
 
-    // đếm ngược Đợt Sống Sót (SURVIVAL WAVE, mục XXIV): hết giờ -> coi như
-    // đã qua đợt, dọn số địch còn sót lại (không thưởng thêm cho chúng vì
-    // mục tiêu là "sống sót", không phải "diệt sạch").
+    // --- đợt sống sót ---
     if (r.waveIsSurvival && r.waveInProgress) {
       r.waveSurviveTimer -= dt;
       if (r.waveSurviveTimer <= 0) {
-        r.spawnQueue = [];
-        r.enemies = [];
+        r.spawnQueue.length = 0;
+        r.enemies.length = 0;
         this._completeWave();
         return;
       }
     }
 
-    // kết thúc đợt (thường - đã diệt sạch hàng đợi + toàn bộ địch trên sân)?
+    // --- kết thúc đợt thường ---
     if (r.waveInProgress && !r.waveIsSurvival && r.spawnQueue.length === 0 && r.enemies.length === 0) {
       this._completeWave();
     }
   },
 
-  /* Xử lý logic chung khi 1 đợt kết thúc (dù là dọn sạch địch hay hết giờ
-     Sống Sót): cộng thưởng riêng của đợt (Special Wave, mục XXIII-XXIV),
-     kiểm tra thắng màn hay sang đợt kế tiếp. */
   _completeWave() {
     const r = this.run;
     r.waveInProgress = false;
@@ -430,6 +587,16 @@ const Game = {
     const waveNumber = r.waveIndex + 1;
     r.score += SCORE_RULES.WAVE_CLEAR_BONUS + (r.waveScoreBonus || 0);
     if (r.waveRewardBonus) r.gold += r.waveRewardBonus;
+
+    // Bị động "An Dân Hộ Quốc": thành tự hồi máu sau mỗi đợt
+    if (r.heroPassive && r.heroPassive.type === "castle_regen") {
+      const heal = (r.heroPassive.value || 0) * (r.heroLevel || 1);
+      if (heal > 0 && r.hp < r.maxHp) {
+        r.hp = Math.min(r.maxHp, r.hp + heal);
+        UI.showToast("💗 An Dân: thành hồi " + heal.toFixed(1) + " HP");
+      }
+    }
+
     GameState.updateBestWave(r.levelId, waveNumber);
     const waveRewardDef = GAME_DATA.rewards ? GAME_DATA.rewards.r_wave_clear : null;
     if (waveRewardDef) GameState.addPersistentReward(waveRewardDef.gold || 0, waveRewardDef.exp || 0);
@@ -450,6 +617,7 @@ const Game = {
       UI.onQuestsCompleted([...stageQuests, ...bossQuests]);
       this._unlockNextStages(r.levelId);
       this._checkStageEndAchievements(stats);
+      this.stopMusic();
       this._sfx("victory");
       EffectManager.shake(3.5, 0.35);
       UI.onGameEnded(true, stats);
@@ -459,7 +627,6 @@ const Game = {
     }
   },
 
-  /* Cộng điểm + Combo thật khi hạ 1 địch (mục XXV-XXVI). */
   _addKillScore(e) {
     const r = this.run;
     r.combo += 1;
@@ -468,8 +635,7 @@ const Game = {
     r.maxCombo = Math.max(r.maxCombo, r.combo);
     const comboStacks = Math.min(r.combo, SCORE_RULES.COMBO_SCORE_CAP_STACK);
     const killScore = SCORE_RULES.KILL_BASE + Math.round((e.def.reward || 0) * SCORE_RULES.KILL_REWARD_MULT);
-    const comboScore = comboStacks * SCORE_RULES.COMBO_SCORE_PER_STACK;
-    r.score += killScore + comboScore;
+    r.score += killScore + comboStacks * SCORE_RULES.COMBO_SCORE_PER_STACK;
     if (e.isBoss) {
       r.score += SCORE_RULES.BOSS_KILL_BONUS;
       const unlocked = AchievementService.evaluate("BOSS_KILL_COUNT", {});
@@ -481,10 +647,6 @@ const Game = {
     }
   },
 
-  /* Cộng Hero EXP thật đã tích luỹ trong trận (mục XIX) vào tiến trình
-     dài hạn của tướng đang dùng. Gọi đúng 1 lần khi trận kết thúc (thắng
-     hoặc thua), rồi xoá heroExpGained để không cộng lại nếu update() còn
-     chạy thêm khung hình nào đó trước khi màn hình chuyển cảnh. */
   _grantHeroExp() {
     const r = this.run;
     if (!r || !r.heroId || r.heroExpGained <= 0) return;
@@ -496,9 +658,6 @@ const Game = {
     }
   },
 
-  /* Xác định số sao đạt được khi THẮNG (mục V), đọc điều kiện Admin cấu
-     hình trên từng Stage (starConditions), có fallback an toàn nếu Admin
-     xoá/thiếu field để không bao giờ crash. */
   _computeStars(levelDef, r, hpPercent) {
     const cond = levelDef.starConditions || {};
     let stars = cond.oneStar === false ? 0 : 1;
@@ -509,8 +668,6 @@ const Game = {
     return stars;
   },
 
-  /* Tính điểm thưởng cuối trận + lưu kỷ lục, trả về stats cho Victory/
-     Defeat Screen (mục LIII-LIV). Gọi đúng 1 lần khi trận kết thúc. */
   _finalizeScore(won) {
     const r = this.run;
     const hpPercent = Math.max(0, Math.round((r.hp / r.maxHp) * 100));
@@ -533,11 +690,10 @@ const Game = {
       elapsedTime: Math.round(r.elapsedTime),
       maxCombo: r.maxCombo,
       critCount: r.critCount,
+      towerCount: r.towers.length,
     };
   },
 
-  /* Kiểm tra các Thành tích chỉ có thể biết được KHI THẮNG 1 màn (mục
-     XXX): 3 sao, không mất HP thành, Score cao, và đã dọn sạch bản đồ. */
   _checkStageEndAchievements(stats) {
     const r = this.run;
     let unlocked = [];
@@ -571,10 +727,11 @@ const Game = {
   /* ---------------- BẮT ĐẦU ĐỢT ---------------- */
   startNextWave() {
     const r = this.run;
-    if (r.waveInProgress || r.status !== "playing") return;
+    if (!r || r.waveInProgress || r.status !== "playing") return false;
+    if (r.waveIndex + 1 >= r.totalWaves) return false;
     r.waveIndex++;
     const wave = this.levelDef.waves[r.waveIndex];
-    if (!wave) return;
+    if (!wave) return false;
     if (wave.warning) UI.showToast(wave.warning);
     r.waveGroupsTemplate = wave.groups;
     r.waveIsSurvival = wave.waveType === "survival";
@@ -586,25 +743,27 @@ const Game = {
     r.waveInProgress = true;
     this._sfx("wave");
     this.persistRun();
+    return true;
   },
 
-  /* Dựng hàng đợi sinh quân từ danh sách "groups" của 1 đợt (mục XXIII).
-     Hỗ trợ: delay (khoảng nghỉ trước khi nhóm này xuất hiện - dùng cho
-     Ambush/phục kích), speedMultiplier/hpMultiplier (buff riêng cho nhóm -
-     dùng cho FAST WAVE/ARMOR WAVE), eliteCount (số con đầu nhóm là Elite -
-     dùng cho ELITE WAVE). Dùng lại cho cả lúc bắt đầu đợt lẫn khi
-     SURVIVAL WAVE cần tái sinh quân giữa chừng. */
+  /* Đợt hiện tại có Boss không? (dùng cho cảnh báo UI) */
+  isBossWave(index) {
+    const wave = this.levelDef && this.levelDef.waves[index];
+    if (!wave) return false;
+    return wave.waveType === "boss" || (wave.groups || []).some((g) => g.boss);
+  },
+
   _buildSpawnQueue(groups) {
     const spawnRate = GAME_DATA.config.enemySpawnRate || 1;
     const queue = [];
     for (const group of groups || []) {
       if (group.delay) queue.push({ wait: true, interval: group.delay });
       if (group.boss) {
-        if (!GAME_DATA.enemyTypes[group.boss]) continue; // Boss đã bị Admin tắt -> bỏ qua an toàn
+        if (!GAME_DATA.enemyTypes[group.boss]) continue;
         queue.push({ type: group.boss, interval: (group.interval || 1) * spawnRate });
         continue;
       }
-      if (!GAME_DATA.enemyTypes[group.type]) continue; // loại địch đã bị tắt/xoá
+      if (!GAME_DATA.enemyTypes[group.type]) continue;
       for (let i = 0; i < group.count; i++) {
         queue.push({
           type: group.type,
@@ -619,18 +778,25 @@ const Game = {
     return queue;
   },
 
-  /* ---------------- XÂY / NÂNG CẤP QUÂN THỦ THÀNH ---------------- */
+  /* ---------------- XÂY / NÂNG CẤP / BÁN ---------------- */
+  towerAt(spotIndex) {
+    return this.run ? this.run.towers.find((t) => t.spotIndex === spotIndex) : null;
+  },
+
   buildTower(spotIndex, typeId) {
     const r = this.run;
     const def = GAME_DATA.towerTypes[typeId];
-    if (!def) return false;
-    if (r.towers.some(t => t.spotIndex === spotIndex)) return false;
+    if (!r || !def) return false;
+    if (r.towers.some((t) => t.spotIndex === spotIndex)) return false;
     if (r.gold < def.cost) return false;
     const spot = this.levelDef.buildSpots[spotIndex];
+    if (!spot) return false;
     const tower = new Tower(typeId, spot.x, spot.y);
     tower.spotIndex = spotIndex;
     r.towers.push(tower);
     r.gold -= def.cost;
+    this._auraDirty = true;
+    EffectManager.spawnSpark(spot.x, spot.y, def.color, 8);
     this._sfx("build");
     this.persistRun();
     return true;
@@ -638,17 +804,69 @@ const Game = {
 
   upgradeTower(spotIndex) {
     const r = this.run;
-    const tower = r.towers.find(t => t.spotIndex === spotIndex);
+    const tower = this.towerAt(spotIndex);
     if (!tower) return false;
+    if (tower.needsBranchChoice()) return false; // phải chọn nhánh trước
     const cost = tower.nextUpgradeCost();
     if (cost === null || r.gold < cost) return false;
     tower.upgrade();
+    tower.totalInvested += cost;
     r.gold -= cost;
+    this._auraDirty = true;
+    EffectManager.spawnSpark(tower.x, tower.y, "#e8c873", 10);
     this._sfx("upgrade");
-    if (tower.level >= tower.def.maxLevel) {
+    if (tower.level >= tower.maxLevel) {
       const unlocked = AchievementService.evaluate("TOWER_MAX_LEVEL", {});
       if (unlocked.length) UI.onAchievementsUnlocked(unlocked);
     }
+    this.persistRun();
+    return true;
+  },
+
+  /* Chọn nhánh trong cây nâng cấp rồi nâng luôn lên cấp tiếp theo. */
+  chooseBranch(spotIndex, branchId) {
+    const r = this.run;
+    const tower = this.towerAt(spotIndex);
+    if (!tower || tower.branchId) return false;
+    const branch = tower.availableBranches().find((b) => b.id === branchId);
+    if (!branch) return false;
+    const cost = tower.nextUpgradeCost();
+    if (cost === null || r.gold < cost) return false;
+    tower.branchId = branchId;
+    tower.upgrade();
+    tower.totalInvested += cost;
+    r.gold -= cost;
+    this._auraDirty = true;
+    EffectManager.spawnSpark(tower.x, tower.y, "#e8c873", 16);
+    this._sfx("upgrade");
+    this.persistRun();
+    return true;
+  },
+
+  /* BÁN THÁP: hoàn lại `sellRefundRate` × tổng vốn đã bỏ ra (xây + mọi lần
+     nâng cấp), làm tròn xuống. Ô đất trở lại trống để xây lại. */
+  sellTower(spotIndex) {
+    const r = this.run;
+    const idx = r ? r.towers.findIndex((t) => t.spotIndex === spotIndex) : -1;
+    if (idx === -1) return false;
+    const tower = r.towers[idx];
+    const refund = tower.sellValue();
+    r.gold += refund;
+    r.towersSoldThisRun++;
+    r.towers.splice(idx, 1);
+    this._auraDirty = true;
+    EffectManager.spawnSpark(tower.x, tower.y, "#c9a24a", 10);
+    this._sfx("sell");
+    this.persistRun();
+    return refund;
+  },
+
+  setTowerPriority(spotIndex, priorityId) {
+    const tower = this.towerAt(spotIndex);
+    if (!tower) return false;
+    if (!TARGET_PRIORITIES.some((p) => p.id === priorityId)) return false;
+    tower.targetPriority = priorityId;
+    this._sfx("button");
     this.persistRun();
     return true;
   },
@@ -658,32 +876,59 @@ const Game = {
     const r = this.run;
     if (!r || !r.skillDef || r.skillCooldownRemaining > 0 || r.status !== "playing") return false;
     const skill = r.skillDef;
-    // Kỹ năng chủ động scale theo Level tướng (mục XXI): mỗi cấp +15% hiệu
-    // lực, cùng cách hp/damage/defense passive đã scale ở _heroBonuses.
-    const skillScale = 1 + 0.15 * ((r.heroLevel || 1) - 1);
+    // Hiệu lực = Level TƯỚNG (+15%/cấp) × Level KỸ NĂNG (perLevelBonus/cấp)
+    const heroScale = 1 + 0.15 * ((r.heroLevel || 1) - 1);
+    const skillScale = 1 + (skill.perLevelBonus || 0.2) * ((r.heroSkillLevel || 1) - 1);
+    const scale = heroScale * skillScale;
+    const dmgType = skill.damageType || "physical";
+
     switch (skill.effect) {
       case "damage_all": {
-        const dmg = (skill.damage || 0) * skillScale;
+        const dmg = (skill.damage || 0) * scale;
         for (const e of r.enemies) {
           if (!e.alive) continue;
-          e.takeDamage(dmg);
+          e.takeDamage(dmg, { damageType: dmgType, armorPen: 25 });
+          if (skill.statusEffect) e.applyStatusEffect(skill.statusEffect);
           EffectManager.spawnSpark(e.x, e.y, "#ff5c3d", 5);
         }
+        EffectManager.shake(3, 0.25);
         break;
       }
       case "heal_castle": {
-        const healAmount = (skill.heal || 0) * skillScale;
-        r.hp = Math.min(r.maxHp, r.hp + healAmount);
+        r.hp = Math.min(r.maxHp, r.hp + (skill.heal || 0) * scale);
         break;
       }
       case "buff_attack_speed":
         r.towerBuffRemaining = skill.duration;
-        r.towerBuffFireRateMult = 1 + (skill.value || 0) * skillScale;
+        r.towerBuffFireRateMult = 1 + (skill.value || 0) * scale;
+        r.towerBuffDamageMult = 1;
         for (const t of r.towers) EffectManager.spawnSpark(t.x, t.y, "#e8c873", 4);
+        break;
+      case "buff_damage":
+        r.towerBuffRemaining = skill.duration;
+        r.towerBuffFireRateMult = 1;
+        r.towerBuffDamageMult = 1 + (skill.value || 0) * scale;
+        for (const t of r.towers) EffectManager.spawnSpark(t.x, t.y, "#ff9a3d", 4);
+        break;
+      case "stun_all": {
+        const dur = (skill.duration || 2) * skillScale;
+        for (const e of r.enemies) {
+          if (!e.alive) continue;
+          if (skill.damage) e.takeDamage(skill.damage * scale, { damageType: dmgType });
+          e.applyStatusEffect({ type: "stun", value: 1, duration: dur });
+          EffectManager.spawnSpark(e.x, e.y, "#e8c873", 5);
+        }
+        EffectManager.shake(3.5, 0.3);
+        break;
+      }
+      case "shield_castle":
+        r.castleShieldRemaining = skill.duration || 10;
+        r.castleShieldValue = Math.round((skill.value || 3) * scale);
         break;
       default:
         return false;
     }
+    if (r.heroEntity) r.heroEntity.flashSkill();
     r.skillCooldownRemaining = skill.cooldown;
     this._sfx("skill");
     this.persistRun();
@@ -694,12 +939,23 @@ const Game = {
     if (this.run) this.run.speed = speed;
   },
 
+  cycleSpeed() {
+    if (!this.run) return 1;
+    const speeds = (GAME_DATA.config.speeds && GAME_DATA.config.speeds.length) ? GAME_DATA.config.speeds : [1, 2, 3];
+    const idx = speeds.indexOf(this.run.speed);
+    const next = speeds[(idx + 1) % speeds.length];
+    this.setSpeed(next);
+    return next;
+  },
+
   togglePause(forceValue) {
     if (!this.run) return;
     this.run.paused = forceValue !== undefined ? forceValue : !this.run.paused;
+    if (typeof SoundManager !== "undefined" && SoundManager.setMusicPaused) {
+      SoundManager.setMusicPaused(this.run.paused);
+    }
   },
 
-  /* Tìm ô xây gần điểm bấm (trả về index hoặc -1) */
   hitTestBuildSpot(x, y) {
     const spots = this.levelDef.buildSpots;
     for (let i = 0; i < spots.length; i++) {
@@ -712,13 +968,11 @@ const Game = {
   /* ---------------- VẼ ---------------- */
   render() {
     const ctx = this.ctx;
+    if (!ctx) return;
     const w = GAME_DATA.config.canvasWidth;
     const h = GAME_DATA.config.canvasHeight;
     ctx.clearRect(0, 0, w, h);
 
-    // Screen shake (mục XXXVI): dịch toàn bộ khung vẽ một chút rồi trả lại
-    // nguyên trạng ở cuối - dùng save/restore để không bao giờ để ma trận
-    // biến đổi rò rỉ sang khung hình sau.
     const shake = EffectManager.getShakeOffset();
     ctx.save();
     if (shake.x || shake.y) ctx.translate(shake.x, shake.y);
@@ -726,19 +980,28 @@ const Game = {
     this._drawBackground(ctx, w, h);
     if (!this.levelDef) { ctx.restore(); return; }
     this._drawPath(ctx);
+    this._drawObstacles(ctx);
     this._drawBuildSpots(ctx);
     this._drawCastle(ctx);
 
     const cfg = GAME_DATA.config.features || {};
     if (this.run) {
       if (cfg.debugMode) for (const t of this.run.towers) t.drawRange(ctx);
+      if (this.selectedSpotIndex !== undefined && this.selectedSpotIndex >= 0) {
+        const sel = this.towerAt(this.selectedSpotIndex);
+        if (sel) sel.drawRange(ctx);
+      }
       for (const t of this.run.towers) t.draw(ctx);
+      if (this.run.heroEntity) {
+        this.run.heroEntity.drawRange(ctx);
+        this.run.heroEntity.draw(ctx);
+      }
       for (const e of this.run.enemies) e.draw(ctx, cfg.showEnemyHpBar);
       for (const p of this.run.projectiles) p.draw(ctx);
       EffectManager.draw(ctx);
     }
     ctx.restore();
-    if (cfg.showFps) this._drawFps(ctx); // FPS vẽ NGOÀI shake để không bị rung theo
+    if (cfg.showFps) this._drawFps(ctx);
   },
 
   _drawFps(ctx) {
@@ -750,23 +1013,35 @@ const Game = {
     ctx.fillText("FPS: " + this.currentFps(), 14, 22);
   },
 
+  /* Bảng màu nền theo THEME của từng màn (Giai đoạn 4) */
+  _themePalette(theme) {
+    switch (theme) {
+      case "river":    return { skyTop: "#cfe3e8", skyBot: "#9ec3cf", groundTop: "#4a7f86", groundBot: "#2f5a63", hill: "rgba(70,100,105,.5)" };
+      case "mountain": return { skyTop: "#e6dcc4", skyBot: "#cdbf9d", groundTop: "#5e7346", groundBot: "#3b4f2d", hill: "rgba(80,82,70,.62)" };
+      case "citadel":  return { skyTop: "#efdfb8", skyBot: "#d9c28e", groundTop: "#7d8a55", groundBot: "#535f38", hill: "rgba(110,95,75,.5)" };
+      case "field":    return { skyTop: "#f0e4bb", skyBot: "#ddcb91", groundTop: "#83a052", groundBot: "#57713a", hill: "rgba(95,110,80,.45)" };
+      case "karst":
+      default:         return { skyTop: "#e9d9ab", skyBot: "#d8c48c", groundTop: "#6e8f4e", groundBot: "#4d6b39", hill: "rgba(90,95,80,.55)" };
+    }
+  },
+
   _drawBackground(ctx, w, h) {
-    // nền trời - đồng lúa
+    const theme = (this.levelDef && this.levelDef.theme) || "karst";
+    const pal = this._themePalette(theme);
     const sky = ctx.createLinearGradient(0, 0, 0, h);
-    sky.addColorStop(0, "#e9d9ab");
-    sky.addColorStop(0.45, "#d8c48c");
-    sky.addColorStop(0.46, "#6e8f4e");
-    sky.addColorStop(1, "#4d6b39");
+    sky.addColorStop(0, pal.skyTop);
+    sky.addColorStop(0.45, pal.skyBot);
+    sky.addColorStop(0.46, pal.groundTop);
+    sky.addColorStop(1, pal.groundBot);
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
 
-    // núi đá vôi cách điệu (đặc trưng Hoa Lư - Ninh Bình)
-    ctx.fillStyle = "rgba(90,95,80,.55)";
+    ctx.fillStyle = pal.hill;
     this._drawMountain(ctx, 60, 240, 90);
     this._drawMountain(ctx, 220, 250, 70);
     this._drawMountain(ctx, 850, 230, 100);
     this._drawMountain(ctx, 700, 240, 60);
-    ctx.fillStyle = "rgba(70,75,62,.5)";
+    ctx.fillStyle = "rgba(70,75,62,.42)";
     this._drawMountain(ctx, 500, 255, 55);
   },
 
@@ -779,6 +1054,84 @@ const Game = {
     ctx.lineTo(cx + size, baseY);
     ctx.closePath();
     ctx.fill();
+  },
+
+  /* CHƯỚNG NGẠI VẬT: đá, cây, tường, cọc, vũng nước - định hình chiến trường
+     và cho biết ngay đây là vùng KHÔNG xây được. */
+  _drawObstacles(ctx) {
+    const list = this.levelDef.obstacles || [];
+    for (const o of list) {
+      const s = o.size || 18;
+      switch (o.type) {
+        case "tree":
+          ctx.fillStyle = "#5a3f26";
+          ctx.fillRect(o.x - 2.5, o.y, 5, s * 0.5);
+          ctx.beginPath();
+          ctx.arc(o.x, o.y - s * 0.25, s * 0.55, 0, Math.PI * 2);
+          ctx.fillStyle = "#3f6a34";
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(o.x - s * 0.3, o.y, s * 0.4, 0, Math.PI * 2);
+          ctx.fillStyle = "#4a7a3c";
+          ctx.fill();
+          break;
+        case "water":
+          ctx.beginPath();
+          ctx.ellipse(o.x, o.y, s * 0.9, s * 0.45, 0, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(60,120,140,.55)";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(180,220,230,.5)";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          break;
+        case "stake":
+          ctx.strokeStyle = "#6b4a2f";
+          ctx.lineWidth = 3;
+          for (let i = -1; i <= 1; i++) {
+            ctx.beginPath();
+            ctx.moveTo(o.x + i * 7, o.y + s * 0.4);
+            ctx.lineTo(o.x + i * 7 + 2, o.y - s * 0.5);
+            ctx.stroke();
+          }
+          break;
+        case "wall":
+          ctx.fillStyle = "#6e5138";
+          ctx.fillRect(o.x - s * 0.8, o.y - s * 0.35, s * 1.6, s * 0.7);
+          ctx.strokeStyle = "rgba(40,28,18,.6)";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(o.x - s * 0.8, o.y - s * 0.35, s * 1.6, s * 0.7);
+          break;
+        case "banner":
+          ctx.strokeStyle = "#4a3320";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(o.x, o.y + s * 0.5);
+          ctx.lineTo(o.x, o.y - s * 0.7);
+          ctx.stroke();
+          ctx.fillStyle = "#7a1f2b";
+          ctx.beginPath();
+          ctx.moveTo(o.x, o.y - s * 0.7);
+          ctx.lineTo(o.x + s * 0.7, o.y - s * 0.45);
+          ctx.lineTo(o.x, o.y - s * 0.2);
+          ctx.closePath();
+          ctx.fill();
+          break;
+        case "rock":
+        default:
+          ctx.beginPath();
+          ctx.moveTo(o.x - s * 0.7, o.y + s * 0.4);
+          ctx.lineTo(o.x - s * 0.35, o.y - s * 0.55);
+          ctx.lineTo(o.x + s * 0.2, o.y - s * 0.35);
+          ctx.lineTo(o.x + s * 0.7, o.y + s * 0.4);
+          ctx.closePath();
+          ctx.fillStyle = "rgba(96,96,88,.85)";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(40,40,36,.55)";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          break;
+      }
+    }
   },
 
   _drawPath(ctx) {
@@ -798,13 +1151,30 @@ const Game = {
     ctx.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
     ctx.stroke();
+
+    // mũi tên chỉ hướng tiến quân
+    ctx.fillStyle = "rgba(90,62,36,.35)";
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      const ux = (b.x - a.x) / len, uy = (b.y - a.y) / len;
+      for (let d = 40; d < len - 20; d += 70) {
+        const x = a.x + ux * d, y = a.y + uy * d;
+        ctx.beginPath();
+        ctx.moveTo(x + ux * 7, y + uy * 7);
+        ctx.lineTo(x - uy * 5, y + ux * 5);
+        ctx.lineTo(x + uy * 5, y - ux * 5);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
   },
 
   _drawBuildSpots(ctx) {
     const spots = this.levelDef.buildSpots;
     const towers = this.run ? this.run.towers : [];
     for (let i = 0; i < spots.length; i++) {
-      const occupied = towers.some(t => t.spotIndex === i);
+      const occupied = towers.some((t) => t.spotIndex === i);
       if (occupied) continue;
       ctx.beginPath();
       ctx.arc(spots[i].x, spots[i].y, 20, 0, Math.PI * 2);
@@ -812,6 +1182,7 @@ const Game = {
       ctx.fill();
       ctx.setLineDash([4, 4]);
       ctx.strokeStyle = "rgba(201,162,74,.8)";
+      ctx.lineWidth = 2;
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.font = "16px serif";
@@ -824,24 +1195,38 @@ const Game = {
 
   _drawCastle(ctx) {
     const c = this.levelDef.castle;
-    // tường thành
     ctx.fillStyle = "#7a1f2b";
     ctx.fillRect(c.x - 42, c.y - 30, 84, 60);
     ctx.strokeStyle = "#c9a24a";
     ctx.lineWidth = 3;
     ctx.strokeRect(c.x - 42, c.y - 30, 84, 60);
-    // răng thành
     ctx.fillStyle = "#c9a24a";
-    for (let i = -3; i <= 3; i++) {
-      ctx.fillRect(c.x + i * 12 - 4, c.y - 40, 8, 12);
-    }
-    // cổng
+    for (let i = -3; i <= 3; i++) ctx.fillRect(c.x + i * 12 - 4, c.y - 40, 8, 12);
     ctx.fillStyle = "#2e2119";
     ctx.fillRect(c.x - 10, c.y - 4, 20, 34);
-    // cờ
     ctx.fillStyle = "#e8c873";
     ctx.font = "26px serif";
     ctx.textAlign = "center";
     ctx.fillText("🏯", c.x, c.y - 46);
+
+    // khiên thành đang bật (kỹ năng Hộ Quốc Trận)
+    if (this.run && this.run.castleShieldRemaining > 0) {
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 62, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(121,200,240,.75)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([6, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // thanh máu thành ngay trên bản đồ
+    if (this.run) {
+      const pct = Math.max(0, this.run.hp / this.run.maxHp);
+      ctx.fillStyle = "rgba(0,0,0,.55)";
+      ctx.fillRect(c.x - 42, c.y + 36, 84, 7);
+      ctx.fillStyle = pct > 0.4 ? "#7bc96f" : "#c94f4f";
+      ctx.fillRect(c.x - 42, c.y + 36, 84 * pct, 7);
+    }
   },
 };

@@ -23,6 +23,12 @@
 
 const LOCAL_PLAYER_ID = "local_player";
 const RUN_SNAPSHOT_KEY = "runSnapshot";
+/* Phiên bản cấu trúc SAVE tổng thể (tiến trình + ván đang chơi).
+   Nếu save trên máy người chơi có version CŨ HƠN, dữ liệu vẫn được giữ và
+   được DataService vá dần qua các bước migrate; nếu save của MỘT VÁN ĐANG
+   CHƠI không khớp RUN_SAVE_VERSION (định nghĩa trong js/game.js) thì ván đó
+   bị bỏ qua an toàn thay vì làm vỡ game. */
+const SAVE_FORMAT_VERSION = 4;
 
 const GameState = {
   /* ----- tiến trình dài hạn, hình dạng tương thích phiên bản 1 ----- */
@@ -31,7 +37,7 @@ const GameState = {
     bestWave: {},
     stageStars: {},
     bestScore: {},
-    settings: { sound: true },
+    settings: { sound: true, sfx: true, music: true },
   },
 
   run: null,
@@ -47,7 +53,7 @@ const GameState = {
     this.progress.bestWave = player.bestWave || {};
     this.progress.stageStars = player.stageStars || {};
     this.progress.bestScore = player.bestScore || {};
-    this.progress.settings = player.settings || { sound: true };
+    this.progress.settings = Object.assign({ sound: true, sfx: true, music: true }, player.settings || {});
   },
 
   /* ---------- Tiến trình dài hạn ---------- */
@@ -124,6 +130,30 @@ const GameState = {
     heroLevels[heroId] = level;
     DataService.update("players", player.id, { heroExp: heroExpMap, heroLevels });
     return { level, leveledUp, expLeft, needed };
+  },
+
+  /* ---------- Nâng cấp KỸ NĂNG chủ động của tướng (Giai đoạn 4) ----------
+     Dùng vàng BỀN VỮNG của người chơi (ví ngoài trận), tách biệt hoàn toàn
+     với vàng trong trận. Mỗi cấp kỹ năng làm tăng hiệu lực theo
+     skill.perLevelBonus, được game.js áp dụng thật khi dùng kỹ năng. */
+  heroSkillCost(heroDef, skillLevel) {
+    return Math.round((heroDef.skillUpgradeCost || 130) * skillLevel);
+  },
+
+  upgradeHeroSkill(heroId) {
+    const player = this.getPlayer();
+    const heroDef = DataService.get("heroes", heroId);
+    if (!player || !heroDef) return { ok: false, reason: "not_found" };
+    if (!(player.heroesOwned || []).includes(heroId)) return { ok: false, reason: "not_owned" };
+    const levels = Object.assign({}, player.heroSkillLevels);
+    const cur = levels[heroId] || 1;
+    const max = heroDef.skillMaxLevel || 5;
+    if (cur >= max) return { ok: false, reason: "max" };
+    const cost = this.heroSkillCost(heroDef, cur);
+    if (player.gold < cost) return { ok: false, reason: "no_gold", cost };
+    levels[heroId] = cur + 1;
+    DataService.update("players", player.id, { gold: player.gold - cost, heroSkillLevels: levels });
+    return { ok: true, level: cur + 1, cost };
   },
 
   /* ---------- Vàng bền vững / EXP / tướng (dùng cho màn Tướng) ---------- */
@@ -222,17 +252,29 @@ const GameState = {
      tiến trình dài hạn ở trên nên KHÔNG lưu trong collection
      "players" (Admin không cần thấy/sửa cái này). */
   hasSavedGame() {
-    return StorageService.has(RUN_SNAPSHOT_KEY);
+    return !!this.loadRunSnapshot();
   },
 
   saveRun(runSnapshot) {
     const config = DataService.getConfig();
     if (config.features && config.features.autoSaveEnabled === false) return;
-    StorageService.set(RUN_SNAPSHOT_KEY, runSnapshot);
+    StorageService.set(RUN_SNAPSHOT_KEY, Object.assign({ formatVersion: SAVE_FORMAT_VERSION }, runSnapshot));
   },
 
+  /* Đọc ván đang chơi dở. Nếu save được ghi bởi một PHIÊN BẢN GAME KHÁC
+     (cấu trúc đã đổi), ta BỎ QUA nó và xoá đi thay vì cố nạp rồi crash -
+     đây chính là cơ chế "version save" chống lỗi khi cập nhật game. */
   loadRunSnapshot() {
-    return StorageService.get(RUN_SNAPSHOT_KEY, null);
+    const snap = StorageService.get(RUN_SNAPSHOT_KEY, null);
+    if (!snap) return null;
+    const runVersion = snap.saveVersion || 0;
+    const expected = (typeof RUN_SAVE_VERSION !== "undefined") ? RUN_SAVE_VERSION : runVersion;
+    if (runVersion !== expected) {
+      console.info("[GameState] Bỏ qua save cũ (version " + runVersion + " ≠ " + expected + ").");
+      StorageService.remove(RUN_SNAPSHOT_KEY);
+      return null;
+    }
+    return snap;
   },
 
   clearRunSnapshot() {
