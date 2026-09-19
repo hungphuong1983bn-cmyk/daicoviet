@@ -517,7 +517,8 @@ html,body{
 .hero-icon{font-size:34px;flex:0 0 auto;filter:drop-shadow(0 0 6px rgba(232,200,115,.35));}
 .hero-info{flex:1;min-width:0;}
 .hero-name{font-weight:700;color:var(--vang-sang);font-size:15px;}
-.hero-level{font-size:11px;color:#c9b385;font-weight:400;margin-left:4px;}
+.hero-level{font-size:11px;color:var(--rank-accent, #c9b385);font-weight:600;margin-left:4px;}
+.hero-next-rank{font-size:10px;color:var(--giay-do-dim);margin:2px 0 0;opacity:.75;}
 .hero-desc{font-size:12px;margin:4px 0;color:var(--giay-do-dim);}
 .hero-stats{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:#c9b385;}
 .hero-exp-row{display:flex;align-items:center;gap:6px;margin-top:5px;}

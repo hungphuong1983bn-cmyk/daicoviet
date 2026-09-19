@@ -656,12 +656,15 @@ const UI = {
       const skillMax = hero.skillMaxLevel || 5;
       const skill = GAME_DATA.skills[hero.skillId];
       const passive = hero.passive;
+      const nextRank = owned ? HeroTiers.nextRank(level) : null;
+      const nextRankReachable = nextRank && nextRank.atLevel <= maxLevel;
 
       const expBar = owned
         ? `<div class="hero-exp-row">
              <div class="hero-exp-track"><div class="hero-exp-fill" style="width:${expPct}%"></div></div>
              <span class="hero-exp-label">${level >= maxLevel ? "MAX" : `${heroExp}/${expNeeded} EXP`}</span>
-           </div>`
+           </div>
+           ${nextRankReachable ? `<p class="hero-next-rank">Lv${nextRank.atLevel}: ${nextRank.label}</p>` : ""}`
         : "";
       const skillBlock = skill
         ? `<div class="hero-skill" data-tip="${skill.description || ""}">
@@ -679,7 +682,7 @@ const UI = {
       card.innerHTML = `
         <div class="hero-icon">${hero.icon || "🧑"}</div>
         <div class="hero-info">
-          <div class="hero-name">${hero.nameVi || hero.name} ${owned ? `<span class="hero-level">Lv${level}</span>` : ""}</div>
+          <div class="hero-name">${hero.nameVi || hero.name} ${owned ? `<span class="hero-level" style="${owned ? `--rank-accent:${HeroTiers.rank(level).accent}` : ""}">Lv${level} · ${HeroTiers.rank(level).label}</span>` : ""}</div>
           <p class="hero-desc">${hero.description || ""}</p>
           <div class="hero-stats">
             <span data-tip="Cộng thẳng vào HP tối đa của thành">+${hero.hp} HP thành</span>

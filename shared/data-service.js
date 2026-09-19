@@ -37,7 +37,7 @@ const DataService = (() => {
     adminLogs: "collection:adminLogs",
   };
 
-  const SCHEMA_VERSION = 11;
+  const SCHEMA_VERSION = 12;
 
   /* ---------------------------------------------------------
      GIAI ĐOẠN 6 - HỆ THỐNG CẤP VŨ KHÍ / CÔNG TRÌNH 1 -> 10
@@ -2379,6 +2379,64 @@ const DataService = (() => {
     console.info("[DataService] Đã di trú lên schemaVersion 11 (Giai đoạn 6): chiến dịch 10 Level, Wave có diễn biến, Mini Boss, công trình 10 cấp có tiến hoá ngoại hình, camera chiến trường + mini-map.");
   }
 
+  /* ---------------------------------------------------------
+     DI TRÚ 11 -> 12 (Giai đoạn 7)
+       - Tướng: maxLevel 5 -> 10 (đồng bộ với Công trình đã lên 10 cấp ở
+         Giai đoạn 6). Vì passive scale TUYẾN TÍNH theo `value * cấp`,
+         số cấp gấp đôi mà giữ nguyên value sẽ làm tướng cấp 10 mạnh gấp
+         ĐÔI tướng cấp 5 cũ - lặp lại đúng vấn đề Công trình đã gặp, nên
+         áp CÙNG hệ số giảm ×0.62 lên `passive.value` (tướng cấp 10 mới
+         mạnh hơn tướng cấp 5 cũ ~20-25%, không phải gấp đôi).
+       - Chỉ số ra trận của Hero (sát thương/tầm đánh theo cấp) cũng được
+         giảm hệ số tương ứng trực tiếp trong entities.js (code, không
+         phải data, nên không cần patch ở đây).
+     Nguyên tắc: CHỈ giảm value nếu maxLevel hiện đang <10 (tức lần đầu
+     di trú) - không đè lên giá trị Admin đã tự chỉnh sau khi lên 10 cấp.
+     --------------------------------------------------------- */
+  /* Sinh lại câu mô tả kỹ năng BỊ ĐỘNG khớp với `value` MỚI sau khi giảm hệ
+     số ở Giai đoạn 7 - nếu không, mô tả tĩnh cũ (vd "+8%") sẽ SAI so với
+     giá trị thật đã giảm còn ~5%. Chỉ áp dụng cho các `type` chuẩn đã biết;
+     kiểu lạ (Admin tự thêm sau này) giữ nguyên mô tả cũ, không đoán mò. */
+  function heroPassiveDescription(type, value) {
+    const round1 = (n) => String(Math.round(n * 10) / 10).replace(".", ",");
+    // crit_bonus lưu THẲNG số điểm % (vd 3 = "+3%"), KHÔNG phải phân số như
+    // các loại còn lại (vd tower_damage 0.08 = "+8%") - phải xử lý riêng,
+    // nếu không sẽ nhân nhầm ×100 và ra một con số sai lệch rất lớn.
+    if (type === "crit_bonus") return `Mọi tháp được +${round1(value)}% tỉ lệ chí mạng mỗi cấp tướng.`;
+    if (type === "castle_regen") return `Thành tự hồi ${round1(value)} HP mỗi đợt cho mỗi cấp tướng.`;
+    const pctStr = round1(value * 100);
+    switch (type) {
+      case "tower_damage": return `Mọi tháp được +${pctStr}% sát thương mỗi cấp tướng.`;
+      case "tower_firerate": return `Mọi tháp được +${pctStr}% tốc bắn mỗi cấp tướng.`;
+      case "tower_range": return `Mọi tháp được +${pctStr}% tầm bắn mỗi cấp tướng.`;
+      case "gold_bonus": return `Nhận thêm ${pctStr}% vàng từ mỗi kẻ địch bị hạ, mỗi cấp tướng.`;
+      case "slow_aura": return `Địch quanh tướng bị làm chậm thêm ${pctStr}% mỗi cấp tướng.`;
+      default: return null; // kiểu không xác định -> giữ nguyên mô tả cũ
+    }
+  }
+
+  function ensureGiaiDoan7Fields() {
+    replaceAll("heroes", list("heroes").map((h) => {
+      if (h.maxLevel >= 10) return h; // đã di trú hoặc Admin đã tự set 10 cấp
+      const patch = { maxLevel: 10 };
+      if (h.passive && typeof h.passive.value === "number") {
+        const newValue = +(h.passive.value * 0.62).toFixed(4);
+        const newDesc = heroPassiveDescription(h.passive.type, newValue);
+        patch.passive = Object.assign({}, h.passive, { value: newValue },
+          newDesc ? { description: newDesc } : {});
+      }
+      return Object.assign({}, h, patch);
+    }));
+  }
+
+  function migrateSchemaV11ToV12() {
+    const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
+    if (currentVersion >= 12) return;
+    ensureGiaiDoan7Fields();
+    StorageService.set(KEYS.schemaVersion, 12);
+    console.info("[DataService] Đã di trú lên schemaVersion 12 (Giai đoạn 7): Tướng 10 cấp (trước là 5), giảm hệ số bị động mỗi cấp để tổng sức mạnh cấp 10 không gấp đôi cấp 5 cũ.");
+  }
+
   /* Di trú schemaVersion 8 -> 9 (Giai đoạn 4: combat/tower/hero/map/audio). */
   function migrateSchemaV8ToV9() {
     const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
@@ -2407,6 +2465,7 @@ const DataService = (() => {
     migrateSchemaV8ToV9();
     migrateSchemaV9ToV10();
     migrateSchemaV10ToV11();
+    migrateSchemaV11ToV12();
     if (!StorageService.has(KEYS.schemaVersion)) {
       StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
     }

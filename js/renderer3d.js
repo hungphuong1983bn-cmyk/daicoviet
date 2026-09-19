@@ -653,9 +653,37 @@ const Renderer3D = {
   },
 
   _makeProjMesh() {
-    const m = new THREE.Mesh(new THREE.SphereGeometry(4.5, 8, 6), this._mat(0xffffff, { emissive: 0x333322 }));
-    this._dynGroup.add(m);
-    return m;
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(this._buildProjGeometry("dps"), this._mat(0xffffff, { emissive: 0x333322 }));
+    g.add(body);
+    g.userData.body = body;
+    g.userData.shapeKey = "dps";
+    // Hào quang phụ cho đạn của tháp đã tiến hoá cao (mốc >=3) - một quầng
+    // sáng nhỏ theo sau, chỉ hiện khi cần để không tốn hiệu năng ở mốc thấp.
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffe36b, transparent: true, opacity: 0.35 })
+    );
+    glow.visible = false;
+    g.add(glow);
+    g.userData.glow = glow;
+    this._dynGroup.add(g);
+    return g;
+  },
+
+  /* Hình dạng đạn theo vai trò vũ khí (mục XV: "projectile mới" theo tiến
+     hoá). Luôn tạo geometry RIÊNG cho từng mesh (không chia sẻ) vì
+     _trimPool()/_disposeGroup() sẽ gọi .dispose() trên geometry khi dọn bớt
+     pool - chia sẻ một geometry dùng chung sẽ làm hỏng các đạn khác đang
+     tham chiếu cùng geometry đó. */
+  _buildProjGeometry(role) {
+    switch (role) {
+      case "siege": return new THREE.IcosahedronGeometry(6, 0);       // đá công thành
+      case "aoe": return new THREE.OctahedronGeometry(5.5, 0);        // đạn nổ diện rộng
+      case "control": return new THREE.TorusGeometry(4, 1.4, 6, 12);  // lưới/xích khống chế
+      case "dps":
+      default: return new THREE.ConeGeometry(3, 9, 6);                // tên/tia bắn thẳng
+    }
   },
 
   _makeHeroMesh(heroDef) {
@@ -816,10 +844,33 @@ const Renderer3D = {
       let mesh = this._projPool[i];
       if (!mesh) { mesh = this._makeProjMesh(); this._projPool.push(mesh); }
       mesh.visible = true;
-      mesh.material.color.set(p.color || "#e8c873");
-      const arc = Math.sin(Math.min(1, (p._t || 0)) * Math.PI) * 14;
+      const shapeKey = (p.role === "siege" || p.role === "aoe" || p.role === "control") ? p.role : "dps";
+      const body = mesh.userData.body;
+      if (mesh.userData.shapeKey !== shapeKey) {
+        if (body.geometry) body.geometry.dispose();
+        body.geometry = this._buildProjGeometry(shapeKey);
+        mesh.userData.shapeKey = shapeKey;
+      }
+      body.material.color.set(p.color || "#e8c873");
+      const tier = p.tierIndex || 0;
+      const tierScale = 1 + tier * 0.08;
+      const arc = Math.sin(Math.min(1, p._t || 0) * Math.PI) * (shapeKey === "siege" || shapeKey === "aoe" ? 20 : 12);
       mesh.position.set(this._wx(p.x), 26 + arc, this._wz(p.y));
-      mesh.scale.setScalar(p.splashRadius > 0 ? 1.7 : 1);
+      body.scale.setScalar((p.splashRadius > 0 ? 1.6 : 1) * tierScale);
+      // Tên/tia bắn thẳng: xoay mũi theo hướng bay để trông giống mũi tên thật.
+      if (shapeKey === "dps" && p.target) {
+        body.rotation.z = -Math.atan2(p.target.y - p.y, p.target.x - p.x) + Math.PI / 2;
+      } else if (shapeKey === "siege") {
+        body.rotation.x = (p._age || 0) * 3;
+      }
+      const glow = mesh.userData.glow;
+      if (tier >= 3) {
+        glow.visible = true;
+        glow.scale.setScalar(1.2 + tier * 0.35);
+        glow.material.color.set(p.color || "#ffe36b");
+      } else {
+        glow.visible = false;
+      }
     }
     for (let i = projs.length; i < this._projPool.length; i++) this._projPool[i].visible = false;
     this._trimPool(this._projPool, projs.length);
@@ -834,8 +885,24 @@ const Renderer3D = {
       const halo = this._hero.userData.halo;
       halo.rotation.z = t * 1.2;
       const flash = Math.max(heroEnt._skillFlash || 0, heroEnt._attackFlash || 0);
-      halo.material.opacity = 0.45 + Math.min(0.5, flash * 1.6);
-      halo.scale.setScalar(1 + Math.min(1.6, flash * 3));
+      // Tước hiệu (mục HeroTiers, Giai đoạn 8) - CHỈ đổi màu áo choàng/độ
+      // sáng hào quang theo cấp, hoàn toàn trang trí, không đụng tới sát
+      // thương/tầm đánh (đã cân bằng riêng ở Giai đoạn 7). Chỉ cập nhật
+      // màu khi tước hiệu thực sự đổi mốc, không phải mỗi khung hình.
+      if (typeof HeroTiers !== "undefined") {
+        const rankIdx = HeroTiers.indexOf(heroEnt.level);
+        if (this._hero.userData.rankIdx !== rankIdx) {
+          const rank = HeroTiers.rank(heroEnt.level);
+          this._hero.userData.cloak.material.color.set(rank.accent);
+          this._hero.userData.rankIdx = rankIdx;
+          this._hero.userData.rankGlow = rank.glow;
+          this._hero.userData.rankHaloScale = rank.haloScale;
+        }
+      }
+      const rankGlow = this._hero.userData.rankGlow || 0;
+      const rankHaloScale = this._hero.userData.rankHaloScale || 1;
+      halo.material.opacity = (0.45 + rankGlow * 0.25) + Math.min(0.5, flash * 1.6);
+      halo.scale.setScalar(rankHaloScale * (1 + Math.min(1.6, flash * 3)));
     } else if (this._hero) {
       this._hero.visible = false;
     }

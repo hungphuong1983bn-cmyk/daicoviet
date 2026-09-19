@@ -384,6 +384,17 @@ function formValuesToStagePatch(values) {
     name: values.name, mapName: values.mapName, description: values.description,
     order: Number(values.order || 1), difficulty: Number(values.difficulty || 1),
     rewardGold: Number(values.rewardGold || 0), rewardExp: Number(values.rewardExp || 0),
+    // BUG ĐÃ SỬA: các field bên dưới (theme/obstacles/specialMechanic/targetTime/
+    // starConditions) đã CÓ SẴN trong form (schemas.js) nhưng bị THIẾU ở đây -
+    // vì DataService.update() chỉ merge NÔNG (Object.assign), sửa các field này
+    // trên form rồi bấm Lưu trước đây KHÔNG HỀ được ghi lại, giá trị cũ vẫn giữ
+    // nguyên một cách âm thầm. Đây chính là phần "hỗ trợ Admin cho bản đồ 3D
+    // mới" - giờ sửa xong các field này mới thực sự lưu được.
+    targetTime: values.targetTime !== undefined && values.targetTime !== "" ? Number(values.targetTime) : undefined,
+    theme: values.theme,
+    obstacles: values.obstacles,
+    specialMechanic: values.specialMechanic,
+    starConditions: values.starConditions,
     unlockCondition,
     enabled: !!values.enabled,
   };

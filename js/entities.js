@@ -807,6 +807,8 @@ class Projectile {
     this.splashRadius = tower.effectiveSplash();
     this.color = tower.def.color;
     this.dmgType = tower.damageType();
+    this.role = tower.def.role;
+    this.tierIndex = (typeof TowerTiers !== "undefined") ? TowerTiers.indexOf(tower.def, tower.level) : 0;
     this.target = target;       // tham chiếu trực tiếp -> không quét mảng mỗi frame
     this.targetId = target.id;
     this.alive = true;
@@ -818,9 +820,15 @@ class Projectile {
     this.effectValue = eff ? eff.value : 0;
     this.effectDuration = eff ? eff.duration : 0;
     this.sourceId = tower.id;
+    // _t = tiến độ đường bay 0..1 (dùng để nhô cao giữa đường bay ở renderer3d.js).
+    // _age = thời gian sống thô, dùng để xoay hình 2D (đá công thành...).
+    this._t = 0;
+    this._age = 0;
+    this._totalDist = Math.max(1, Math.hypot(target.x - tower.x, target.y - tower.y));
   }
 
   update(dt, enemies) {
+    this._age += dt;
     const target = this.target;
     if (!target || !target.alive) { this.alive = false; this.target = null; return; }
     const dx = target.x - this.x;
@@ -828,10 +836,14 @@ class Projectile {
     const dist = Math.hypot(dx, dy);
     const step = this.speed * dt;
     if (step >= dist) {
+      this._t = 1;
       this.hit(target, enemies);
     } else {
       this.x += (dx / dist) * step;
       this.y += (dy / dist) * step;
+      // Tiến độ đường bay TÍNH SAU KHI DI CHUYỂN, để renderer3d.js dùng vẽ
+      // đúng độ cao vòng cung tại vị trí đạn THỰC SỰ đang ở, không lệch 1 khung hình.
+      this._t = Math.max(0, Math.min(1, 1 - (dist - step) / this._totalDist));
     }
   }
 
@@ -875,18 +887,48 @@ class Projectile {
     }
   }
 
+  /* Hình dạng đạn theo VAI TRÒ vũ khí (mục XV: "projectile mới" khi tiến hoá),
+     cộng thêm hào quang tăng dần theo MỐC TIẾN HOÁ (tierIndex 0..5) - đạn của
+     một tháp Lv9-10 phải trông rõ ràng khác một tháp Lv1. */
   draw(ctx) {
     const isMagic = this.dmgType === "magic";
-    if (isMagic) {
+    const tier = this.tierIndex || 0;
+    const glowR = 3.5 + tier * 1.1;
+    if (isMagic || tier >= 3) {
       ctx.beginPath();
-      ctx.arc(this.x, this.y, 5.5, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(180,140,255,.35)";
+      ctx.arc(this.x, this.y, glowR, 0, Math.PI * 2);
+      ctx.fillStyle = isMagic ? "rgba(180,140,255,.35)" : "rgba(255,220,140,.3)";
       ctx.fill();
     }
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, isMagic ? 3.4 : 4, 0, Math.PI * 2);
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    const size = (isMagic ? 3.4 : 4) + tier * 0.35;
     ctx.fillStyle = this.color;
-    ctx.fill();
+    switch (this.role) {
+      case "siege": // đá công thành: khối vuông nặng nề, xoay khi bay
+        ctx.rotate(this._age * 3);
+        ctx.fillRect(-size, -size, size * 2, size * 2);
+        break;
+      case "control": // lưới/xích khống chế: vòng tròn rỗng
+        ctx.beginPath();
+        ctx.arc(0, 0, size, 0, Math.PI * 2);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = this.color;
+        ctx.stroke();
+        break;
+      case "aoe": { // đạn nổ diện rộng: hình thoi
+        ctx.beginPath();
+        ctx.moveTo(0, -size); ctx.lineTo(size, 0); ctx.lineTo(0, size); ctx.lineTo(-size, 0);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      default: // dps mặc định: mũi tên/tia thẳng
+        ctx.beginPath();
+        ctx.arc(0, 0, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
   }
 }
 
@@ -905,9 +947,12 @@ class Hero {
     this._animTime = 0;
     this._attackFlash = 0;
     this._skillFlash = 0;
-    const scale = 1 + 0.18 * (this.level - 1);
+    // Giai đoạn 7: maxLevel tướng 5 -> 10. Hệ số mỗi cấp giảm còn ~62% mức
+    // cũ (giống cách Công trình đã làm ở Giai đoạn 6) để tướng cấp 10 mới
+    // chỉ mạnh hơn tướng cấp 5 cũ ~20-25%, không mạnh gấp đôi.
+    const scale = 1 + 0.112 * (this.level - 1);
     this.damage = (heroDef.heroDamage || 24) * scale;
-    this.range = (heroDef.heroRange || 150) * (1 + 0.04 * (this.level - 1));
+    this.range = (heroDef.heroRange || 150) * (1 + 0.025 * (this.level - 1));
     this.fireRate = heroDef.heroFireRate || 0.9;
     this.dmgType = heroDef.heroDamageType || "physical";
   }
