@@ -1057,3 +1057,50 @@ html,body{
   .hero-hud{display:none !important;}
   .minimap-wrap{bottom:4px;}
 }
+
+/* =========================================================
+   GIAI ĐOẠN 8 — TOÀN MÀN HÌNH TRÊN MOBILE (MÀN HÌNH DỌC)
+   Trước đây bản đồ 16:9 bị "contain" trong khung dọc nên chỉ cao ~1/3
+   màn hình, còn lại là hai mảng đen. Nay viewport.js cho canvas có tỉ lệ
+   đúng bằng khung chơi (class .map-portrait) và xoay bản đồ 90°, nên CSS
+   chỉ cần để canvas lấp kín khung + chỉnh lại vị trí các nút nổi.
+   ========================================================= */
+
+/* Dùng chiều cao THẬT của vùng nhìn thấy (trừ thanh địa chỉ trình duyệt mobile) */
+html,body{
+  height:100%;
+  height:100dvh;
+  overscroll-behavior:none;            /* chặn kéo-để-tải-lại / cuộn nảy khi kéo camera */
+}
+
+/* Buffer canvas đã cùng tỉ lệ khung -> lấp kín, không còn viền đen */
+.game-stage.map-portrait #game-canvas,
+.game-stage.map-portrait #game-canvas-3d{
+  object-fit:fill;
+}
+.game-stage.map-portrait{background:#0f0b08;}
+
+/* Nút camera: nhỏ gọn, hơi trong suốt để không che bản đồ đang lấp kín màn hình */
+.map-portrait .cam-controls{gap:5px;right:calc(5px + var(--safe-r));}
+.map-portrait .cam-btn{
+  width:40px;height:40px;font-size:13px;border-radius:11px;
+  background:linear-gradient(180deg,rgba(60,42,30,.78),rgba(28,20,14,.78));
+}
+.map-portrait .cam-btn:disabled{opacity:.4;}
+.cam-btn svg{display:block;}
+
+/* Mini-map dạng đứng khi bản đồ xoay dọc (chỉ hiện khi đã phóng to) */
+.map-portrait .minimap-wrap{bottom:8px;}
+.map-portrait #minimap{width:72px;height:128px;}
+
+/* Bảng chọn tháp: không che quá nửa chiến trường */
+.map-portrait .tower-picker{max-height:52%;}
+
+/* Chạy như ứng dụng cài trên màn hình chính: chừa tai thỏ / thanh điều hướng */
+@media (display-mode: fullscreen), (display-mode: standalone){
+  .hud{padding-top:calc(8px + var(--safe-t));}
+}
+
+@media (max-width:390px){
+  .map-portrait #minimap{width:64px;height:114px;}
+}

@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1c140e">
+<!-- Toàn màn hình trên mobile: khi "Thêm vào Màn hình chính" game chạy không còn thanh trình duyệt -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Đại Cồ Việt">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Đại Cồ Việt – Thủ Thành Hoa Lư</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -156,6 +165,18 @@
       <span>🗺️ Mini-map</span>
       <button class="btn btn-toggle" id="btn-toggle-minimap">Bật</button>
     </div>
+    <div class="settings-row" id="row-settings-fullscreen">
+      <span>⛶ Toàn màn hình</span>
+      <button class="btn btn-toggle" id="btn-settings-fullscreen">Vào</button>
+    </div>
+    <div class="settings-row">
+      <span>📱 Bản đồ dọc lấp đầy màn hình</span>
+      <button class="btn btn-toggle" id="btn-toggle-portrait">Bật</button>
+    </div>
+    <div class="settings-row">
+      <span>📲 Tự vào toàn màn hình khi chơi</span>
+      <button class="btn btn-toggle" id="btn-toggle-autofs">Bật</button>
+    </div>
     <div class="settings-row">
       <span>💥 Số sát thương</span>
       <button class="btn btn-toggle" id="btn-toggle-damage-numbers">Bật</button>
@@ -260,6 +281,7 @@
 
     <!-- Nút camera chiến trường -->
     <div class="cam-controls" id="cam-controls">
+      <button class="cam-btn hidden" id="btn-fullscreen" aria-label="Toàn màn hình" data-tip="Toàn màn hình"></button>
       <button class="cam-btn" id="btn-cam-in" data-tip="Phóng to">🔍+</button>
       <button class="cam-btn" id="btn-cam-out" data-tip="Thu nhỏ">🔍−</button>
       <button class="cam-btn" id="btn-cam-center" data-tip="Về trung tâm bản đồ">🎯</button>
@@ -363,6 +385,7 @@
 <script src="vendor/three.min.js"></script>
 <script src="js/effect-manager.js"></script>
 <script src="js/renderer3d.js"></script>
+<script src="js/viewport.js"></script>
 <script src="js/sound-manager.js"></script>
 <script src="js/game.js"></script>
 <script src="js/ui.js"></script>

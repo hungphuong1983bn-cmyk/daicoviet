@@ -10,8 +10,12 @@
      độ 2D cũ (960x540). Renderer3D chỉ đọc trạng thái và dựng cảnh.
    - Hệ toạ độ: điểm bản đồ (mx, my) -> thế giới 3D (mx - 480, 0, my - 270).
      Nhờ vậy mọi va chạm, tầm bắn, đường đi... không phải sửa một dòng.
-   - Canvas 3D có buffer cố định 960x540 và dùng CSS `object-fit: contain`
+   - Canvas 3D mặc định có buffer 960x540 và dùng CSS `object-fit: contain`
      y hệt canvas 2D, nên hàm đổi toạ độ chuột sẵn có vẫn đúng.
+   - Giai đoạn 8: trên màn hình DỌC (điện thoại), Viewport (viewport.js) gọi
+     `setView(w, h, 1)` để buffer có tỉ lệ đúng bằng khung chơi và camera 3D
+     xoay 90° quanh trục đứng -> bản đồ lấp đầy chiều cao thay vì bị thu
+     thành một dải mỏng giữa hai mảng đen.
    - Canvas 2D cũ được giữ lại NẰM TRÊN, trong suốt, để bắt sự kiện chuột
      và vẽ lớp phủ (số sát thương, thanh máu, tia lửa) bằng cách chiếu
      toạ độ 3D về màn hình.
@@ -42,8 +46,17 @@ const Renderer3D = {
   _castleShield: null,
   _hero: null,
   _tmpVec: null,
-  _W: 960,
+  _sun: null,
+  _horizon: null,
+  _rim: null,
+  _MW: 960,             // kích thước BẢN ĐỒ (hệ toạ độ game) - không bao giờ đổi
+  _MH: 540,
+  _W: 960,              // kích thước KHUNG NHÌN (buffer canvas) - đổi theo màn hình
   _H: 540,
+  _orient: 0,           // 0 = ngang (gốc) · 1 = dọc (xoay bản đồ 90°)
+  _fit: null,           // {dist, pitch, shift, ppu} khi orient = 1
+  _uiScale: 1,          // hệ số phóng lớp phủ 2D (thanh máu, số sát thương)
+  _fontScale: 1,
 
   /* --------------------------------------------------------
      BẬT / TẮT
@@ -66,8 +79,8 @@ const Renderer3D = {
     if (typeof THREE === "undefined" || !canvas2d || !canvas2d.parentElement) return false;
     try {
       const cfg = (GAME_DATA && GAME_DATA.config) || {};
-      this._W = cfg.canvasWidth || 960;
-      this._H = cfg.canvasHeight || 540;
+      this._MW = this._W = cfg.canvasWidth || 960;
+      this._MH = this._H = cfg.canvasHeight || 540;
 
       const canvas = document.createElement("canvas");
       canvas.id = "game-canvas-3d";
@@ -98,6 +111,7 @@ const Renderer3D = {
         c.near = 100; c.far = 1800;
       }
       scene.add(sun);
+      this._sun = sun;
       scene.add(new THREE.HemisphereLight(0xdfe9f5, 0x4a3a28, 0.75));
       scene.add(new THREE.AmbientLight(0xffffff, 0.22));
 
@@ -129,6 +143,8 @@ const Renderer3D = {
     const on = this.active();
     this.canvas.style.display = on ? "block" : "none";
     if (Game && Game.canvas) Game.canvas.classList.toggle("canvas-overlay-3d", on);
+    // bật/tắt 3D hoặc WebGL hỏng -> bố cục dọc phải tính lại (2D dự phòng luôn dùng khung ngang gốc)
+    if (typeof Viewport !== "undefined") Viewport.update(true);
   },
 
   setEnabled(on) {
@@ -142,10 +158,119 @@ const Renderer3D = {
   },
 
   /* --------------------------------------------------------
+     KHUNG NHÌN THEO MÀN HÌNH (Giai đoạn 8)
+     Viewport gọi hàm này mỗi khi khung chơi đổi kích thước/hướng.
+       orient = 0 : giữ đúng như bản gốc (buffer 960x540, camera nghiêng ~43°).
+       orient = 1 : màn hình DỌC. Buffer có tỉ lệ đúng bằng khung chơi, camera
+                    đứng ở phía +x nhìn về -x nên bản đồ xoay 90° thuận chiều
+                    kim đồng hồ: quân địch đi từ TRÊN xuống, thành nằm ở DƯỚI.
+                    Khoảng cách + độ nghiêng camera được TÍNH để cả bản đồ vừa
+                    khít khung ở zoom 1 (không mất một ô đất nào).
+     Trả về true nếu có thay đổi thật sự.
+     -------------------------------------------------------- */
+  setView(w, h, orient) {
+    if (!this.renderer || !this.camera) return false;
+    w = Math.max(2, Math.round(w));
+    h = Math.max(2, Math.round(h));
+    const o = orient ? 1 : 0;
+    if (w === this._W && h === this._H && o === this._orient) return false;
+
+    this._W = w;
+    this._H = h;
+    this._orient = o;
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+
+    this._fit = o ? this._computeFit(w / h) : null;
+    const ppu = o ? this._fit.ndcPerUnit * w : w / this._MW;   // pixel canvas / đơn vị bản đồ
+    this._ppu = ppu;
+    // Lớp phủ 2D (thanh máu, số sát thương) phóng theo cùng tỉ lệ để tương xứng với vật thể
+    this._uiScale = o ? Math.max(1, ppu * 1.1) : 1;
+    this._fontScale = o ? Math.max(1, ppu * 1.35) : 1;
+
+    if (this._horizon) this._horizon.visible = !o;
+    if (this._rim) this._rim.scale.x = o ? 1.24 : 1;
+    // Nắng xoay cùng camera để mặt nhìn thấy vẫn được chiếu sáng như bản ngang.
+    if (this._sun) {
+      if (o) this._sun.position.set(360, 700, 380);
+      else this._sun.position.set(-380, 700, 360);
+    }
+    return true;
+  },
+
+  /* Pixel canvas trên mỗi đơn vị bản đồ ở tâm khung (BattleCamera dùng để đổi kéo ngón -> dịch bản đồ). */
+  pxPerUnit() { return this._ppu || 1; },
+  isPortraitView() { return this._orient === 1; },
+
+  /* Tính camera cho chế độ dọc: chọn độ nghiêng THẤP NHẤT (giữ cảm giác 3D)
+     mà vẫn lấp đầy chiều cao khung, rồi nhị phân tìm khoảng cách + độ lệch
+     điểm ngắm để cả hình chữ nhật bản đồ vừa khít, cân đều trên/dưới. */
+  _computeFit(aspect) {
+    const MW = this._MW, MH = this._MH;
+    const cam = new THREE.PerspectiveCamera(this.camera.fov, aspect, 10, 9000);
+    const pts = [];
+    for (const x of [-MW / 2, 0, MW / 2]) for (const z of [-MH / 2, 0, MH / 2]) pts.push(new THREE.Vector3(x, 0, z));
+    const MX = 0.04, MY = 0.03;            // lề an toàn (toạ độ NDC)
+    const tmp = new THREE.Vector3();
+
+    const measure = (D, pitch, sh) => {
+      cam.position.set(sh + D * Math.cos(pitch), D * Math.sin(pitch), 0);
+      cam.lookAt(sh, 0, 0);
+      cam.updateMatrixWorld(true);
+      let maxX = 0, maxY = -9, minY = 9;
+      for (const p of pts) {
+        tmp.copy(p).project(cam);
+        maxX = Math.max(maxX, Math.abs(tmp.x));
+        maxY = Math.max(maxY, tmp.y);
+        minY = Math.min(minY, tmp.y);
+      }
+      return { maxX, maxY, minY };
+    };
+    const centered = (D, pitch) => {        // chọn độ lệch điểm ngắm để cân trên/dưới
+      let lo = -500, hi = 500;
+      for (let i = 0; i < 28; i++) {
+        const sh = (lo + hi) / 2;
+        const r = measure(D, pitch, sh);
+        if (r.maxY + r.minY > 0) hi = sh; else lo = sh;
+      }
+      const sh = (lo + hi) / 2;
+      const r = measure(D, pitch, sh);
+      r.shift = sh;
+      return r;
+    };
+    const solve = (pitch) => {
+      let lo = 300, hi = 9000;
+      for (let i = 0; i < 28; i++) {
+        const D = (lo + hi) / 2;
+        const r = centered(D, pitch);
+        if (Math.max(r.maxX / (1 - MX), r.maxY / (1 - MY)) > 1) lo = D; else hi = D;
+      }
+      const r = centered(hi, pitch);
+      return { dist: hi, pitch, shift: r.shift, fillY: r.maxY };
+    };
+
+    let best = null;
+    for (let deg = 50; deg <= 72; deg += 2) {
+      best = solve(deg * Math.PI / 180);
+      if (best.fillY >= 0.9) break;         // đã lấp đầy chiều cao -> không cần nghiêng thêm
+    }
+
+    // số pixel NDC trên mỗi đơn vị bản đồ ở tâm (theo phương ngang màn hình)
+    cam.position.set(best.shift + best.dist * Math.cos(best.pitch), best.dist * Math.sin(best.pitch), 0);
+    cam.lookAt(best.shift, 0, 0);
+    cam.updateMatrixWorld(true);
+    const a = new THREE.Vector3(0, 0, 0).project(cam);
+    const b = new THREE.Vector3(0, 0, 100).project(cam);
+    best.ndcPerUnit = Math.abs(b.x - a.x) * 0.5 / 100;   // × chiều rộng canvas = pixel / đơn vị
+    return best;
+  },
+
+  /* --------------------------------------------------------
      TIỆN ÍCH
      -------------------------------------------------------- */
-  _wx(mx) { return mx - this._W / 2; },
-  _wz(my) { return my - this._H / 2; },
+  _wx(mx) { return mx - this._MW / 2; },
+  _wz(my) { return my - this._MH / 2; },
 
   /* Chiếu một điểm bản đồ (kèm độ cao) về toạ độ canvas 2D để vẽ lớp phủ. */
   project(mx, my, h) {
@@ -164,8 +289,8 @@ const Renderer3D = {
     const t = -ray.origin.y / ray.direction.y;
     if (t < 0) return { x: -9999, y: -9999 };
     return {
-      x: ray.origin.x + ray.direction.x * t + this._W / 2,
-      y: ray.origin.z + ray.direction.z * t + this._H / 2,
+      x: ray.origin.x + ray.direction.x * t + this._MW / 2,
+      y: ray.origin.z + ray.direction.z * t + this._MH / 2,
     };
   },
 
@@ -226,11 +351,13 @@ const Renderer3D = {
     this._levelGroup.add(ground);
 
     // thảm cỏ sẫm quanh rìa cho có chiều sâu
-    const rim = new THREE.Mesh(new THREE.PlaneGeometry(this._W + 60, this._H + 60), this._mat(pal.field));
+    const rim = new THREE.Mesh(new THREE.PlaneGeometry(this._MW + 60, this._MH + 60), this._mat(pal.field));
     rim.rotation.x = -Math.PI / 2;
     rim.position.y = -0.2;
+    rim.scale.x = this._orient === 1 ? 1.24 : 1;   // màn dọc nhìn xa hơn theo trục x -> mở rộng thảm cỏ
     rim.receiveShadow = this.renderer.shadowMap.enabled;
     this._levelGroup.add(rim);
+    this._rim = rim;
 
     this._buildHorizon(pal);
     this._buildPath(levelDef, pal);
@@ -256,12 +383,17 @@ const Renderer3D = {
       [-760, 470, 280], [-380, 520, 210], [40, 560, 300],
       [430, 500, 240], [820, 470, 265], [-120, 420, 170], [620, 430, 160],
     ];
+    const group = new THREE.Group();
     for (const [x, size, h] of spots) {
       const cone = new THREE.Mesh(new THREE.ConeGeometry(size, h, 5), this._mat(pal.hill));
       cone.position.set(x, h / 2 - 20, -620 - Math.abs(x) * 0.12);
       cone.rotation.y = (x % 7) * 0.3;
-      this._levelGroup.add(cone);
+      group.add(cone);
     }
+    // Nhìn từ trên cao (màn dọc) không có đường chân trời: núi cao sẽ đè lên bản đồ -> ẩn đi.
+    group.visible = this._orient !== 1;
+    this._horizon = group;
+    this._levelGroup.add(group);
   },
 
   _buildPath(levelDef, pal) {
@@ -924,7 +1056,7 @@ const Renderer3D = {
      đối vì nó dùng chính camera này. */
   _applyCamera() {
     const shake = EffectManager.getShakeOffset();
-    let cx = this._W / 2, cy = this._H / 2, zoom = 1;
+    let cx = this._MW / 2, cy = this._MH / 2, zoom = 1;
     if (typeof BattleCamera !== "undefined" && BattleCamera.enabled()) {
       cx = BattleCamera.x; cy = BattleCamera.y; zoom = BattleCamera.zoom;
     }
@@ -932,8 +1064,23 @@ const Renderer3D = {
     // nhờ vậy zoom/pan và thao tác chạm khớp nhau tuyệt đối.
     const tx = this._wx(cx), tz = this._wz(cy);
     const d = 1 / zoom;
-    this.camera.position.set(tx + shake.x * 1.4, 640 * d + shake.y * 1.4, tz + 690 * d);
-    this.camera.lookAt(tx, 0, tz);
+    const fog = this.scene ? this.scene.fog : null;
+    const f = this._orient === 1 ? this._fit : null;
+    if (f) {
+      // Màn hình DỌC: camera đứng phía +x, nhìn về -x (bản đồ xoay 90° thuận chiều kim đồng hồ).
+      const fx = tx + f.shift * d;
+      const back = f.dist * Math.cos(f.pitch) * d;
+      const up = f.dist * Math.sin(f.pitch) * d;
+      this.camera.position.set(fx + back, up + shake.y * 1.4, tz + shake.x * 1.4);
+      this.camera.lookAt(fx, 0, tz);
+      // camera xa hơn bản ngang -> đẩy sương mù ra xa theo cùng tỉ lệ để hình không bị phai màu
+      const r = f.dist / 941;
+      if (fog) { fog.near = 900 * r; fog.far = 2200 * r; }
+    } else {
+      this.camera.position.set(tx + shake.x * 1.4, 640 * d + shake.y * 1.4, tz + 690 * d);
+      this.camera.lookAt(tx, 0, tz);
+      if (fog) { fog.near = 900; fog.far = 2200; }
+    }
   },
 
   /* Giải phóng phần thừa của pool khi số lượng vật thể giảm mạnh, tránh
@@ -957,6 +1104,7 @@ const Renderer3D = {
   _drawOverlay(game, ctx) {
     const run = game.run;
     const cfg = GAME_DATA.config.features || {};
+    const u = this._uiScale, fs = this._fontScale;   // = 1 ở chế độ ngang gốc
     ctx.save();
     ctx.textAlign = "center";
 
@@ -968,14 +1116,14 @@ const Renderer3D = {
           const h = (e.behavior === "flying" ? 34 : 0) + (e.def.radius || 12) * 2.6 + (e.isBoss ? 30 : 8);
           const p = this.project(e.x, e.y, h);
           if (p.z > 1) continue;
-          const w = e.isBoss ? 56 : 26;
+          const w = (e.isBoss ? 56 : 26) * u;
           ctx.fillStyle = "rgba(0,0,0,.55)";
-          ctx.fillRect(p.x - w / 2, p.y, w, 4);
+          ctx.fillRect(p.x - w / 2, p.y, w, 4 * u);
           ctx.fillStyle = e.isBoss ? "#e0483c" : (e.isElite ? "#e8c873" : "#7bc96f");
-          ctx.fillRect(p.x - w / 2, p.y, w * Math.max(0, e.hp / e.maxHp), 4);
+          ctx.fillRect(p.x - w / 2, p.y, w * Math.max(0, e.hp / e.maxHp), 4 * u);
           if (e.shield > 0 && e.maxShield > 0) {
             ctx.fillStyle = "#79c8f0";
-            ctx.fillRect(p.x - w / 2, p.y - 4, w * Math.max(0, e.shield / e.maxShield), 3);
+            ctx.fillRect(p.x - w / 2, p.y - 4 * u, w * Math.max(0, e.shield / e.maxShield), 3 * u);
           }
         }
       }
@@ -987,7 +1135,7 @@ const Renderer3D = {
         const p2 = this.project(b.x2, b.y2, 16);
         ctx.globalAlpha = a * 0.9;
         ctx.strokeStyle = b.color;
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 2.5 * u;
         ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
       }
       // vòng nổ lan
@@ -997,7 +1145,7 @@ const Renderer3D = {
         const edge = this.project(r.x + r.radius * (0.35 + k * 0.75), r.y, 4);
         ctx.globalAlpha = Math.max(0, 1 - k) * 0.6;
         ctx.strokeStyle = r.color;
-        ctx.lineWidth = 3 * (1 - k) + 1;
+        ctx.lineWidth = (3 * (1 - k) + 1) * u;
         ctx.beginPath();
         ctx.ellipse(c.x, c.y, Math.abs(edge.x - c.x), Math.abs(edge.x - c.x) * 0.45, 0, 0, Math.PI * 2);
         ctx.stroke();
@@ -1008,7 +1156,7 @@ const Renderer3D = {
         const p = this.project(s.x, s.y, 16);
         ctx.globalAlpha = a;
         ctx.fillStyle = s.color;
-        ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+        ctx.fillRect(p.x - 1.5 * u, p.y - 1.5 * u, 3 * u, 3 * u);
       }
       // số sát thương
       ctx.globalAlpha = 1;
@@ -1022,12 +1170,12 @@ const Renderer3D = {
           n.kind === "poison" ? "#9ede6a" :
           n.kind === "bleed" ? "#ff7d7d" :
           n.kind === "shield" ? "#8cc8ff" : "#fff2c9";
-        ctx.font = (n.isCritical ? "bold 17px" : "bold 13px") + " sans-serif";
+        ctx.font = "bold " + Math.round((n.isCritical ? 17 : 13) * fs) + "px sans-serif";
         ctx.strokeStyle = "rgba(0,0,0,.6)";
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 3 * fs;
         const text = (n.isCritical ? "✦-" : "-") + Math.round(n.amount);
-        ctx.strokeText(text, p.x, p.y - (n.age / n.life) * 24);
-        ctx.fillText(text, p.x, p.y - (n.age / n.life) * 24);
+        ctx.strokeText(text, p.x, p.y - (n.age / n.life) * 24 * u);
+        ctx.fillText(text, p.x, p.y - (n.age / n.life) * 24 * u);
       }
       ctx.globalAlpha = 1;
 
@@ -1037,12 +1185,12 @@ const Renderer3D = {
         const p = this.project(c.x, c.y, 130);
         const pct = Math.max(0, run.hp / run.maxHp);
         ctx.fillStyle = "rgba(0,0,0,.55)";
-        ctx.fillRect(p.x - 42, p.y, 84, 7);
+        ctx.fillRect(p.x - 42 * u, p.y, 84 * u, 7 * u);
         ctx.fillStyle = pct > 0.5 ? "#7bc96f" : (pct > 0.25 ? "#e8c873" : "#e0483c");
-        ctx.fillRect(p.x - 42, p.y, 84 * pct, 7);
+        ctx.fillRect(p.x - 42 * u, p.y, 84 * u * pct, 7 * u);
         ctx.strokeStyle = "rgba(201,162,74,.85)";
         ctx.lineWidth = 1;
-        ctx.strokeRect(p.x - 42, p.y, 84, 7);
+        ctx.strokeRect(p.x - 42 * u, p.y, 84 * u, 7 * u);
       }
     }
 

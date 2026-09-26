@@ -127,6 +127,11 @@ const UI = {
 
       /* Camera chiến trường */
       camControls: $("cam-controls"),
+      btnFullscreen: $("btn-fullscreen"),
+      btnSettingsFullscreen: $("btn-settings-fullscreen"),
+      rowSettingsFullscreen: $("row-settings-fullscreen"),
+      btnTogglePortrait: $("btn-toggle-portrait"),
+      btnToggleAutoFs: $("btn-toggle-autofs"),
       btnCamIn: $("btn-cam-in"),
       btnCamOut: $("btn-cam-out"),
       btnCamCenter: $("btn-cam-center"),
@@ -242,6 +247,29 @@ const UI = {
       rebuildGameData();
       this._refreshSettingsButtons();
     });
+
+    /* Giai đoạn 8: hiển thị toàn màn hình trên mobile */
+    if (e.btnTogglePortrait) e.btnTogglePortrait.addEventListener("click", () => {
+      const cfg = DataService.getConfig();
+      const on = !(cfg.features && cfg.features.portraitFill === false);
+      DataService.setConfig({ features: { portraitFill: !on } });
+      rebuildGameData();
+      this._refreshSettingsButtons();
+      if (typeof Viewport !== "undefined") Viewport.update(true);
+    });
+    if (e.btnToggleAutoFs) e.btnToggleAutoFs.addEventListener("click", () => {
+      const cfg = DataService.getConfig();
+      const on = !(cfg.features && cfg.features.autoFullscreen === false);
+      DataService.setConfig({ features: { autoFullscreen: !on } });
+      rebuildGameData();
+      this._refreshSettingsButtons();
+    });
+    if (e.btnFullscreen) e.btnFullscreen.addEventListener("click", (ev) => { ev.stopPropagation(); this._toggleFullscreen(); });
+    if (e.btnSettingsFullscreen) e.btnSettingsFullscreen.addEventListener("click", () => this._toggleFullscreen());
+    const onFsChange = () => this._syncFullscreenButtons();
+    document.addEventListener("fullscreenchange", onFsChange);
+    document.addEventListener("webkitfullscreenchange", onFsChange);
+    this._syncFullscreenButtons();
 
     e.btnResetProgress.addEventListener("click", () => {
       if (confirm("Xoá toàn bộ tiến trình đã lưu?")) {
@@ -453,6 +481,35 @@ const UI = {
     setBtn(this.els.btnToggleShadows, !(cfg.features && cfg.features.shadows3d === false));
     setBtn(this.els.btnToggleCamera, !(cfg.features && cfg.features.cameraEnabled === false));
     setBtn(this.els.btnToggleMinimap, !(cfg.features && cfg.features.miniMapEnabled === false));
+    setBtn(this.els.btnTogglePortrait, !(cfg.features && cfg.features.portraitFill === false));
+    setBtn(this.els.btnToggleAutoFs, !(cfg.features && cfg.features.autoFullscreen === false));
+    this._syncFullscreenButtons();
+  },
+
+  /* ---------------- TOÀN MÀN HÌNH (Giai đoạn 8) ---------------- */
+  _FS_ICON_ENTER: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+  _FS_ICON_EXIT: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
+
+  async _toggleFullscreen() {
+    if (typeof Viewport === "undefined") return;
+    const r = await Viewport.toggleFullscreen();
+    if (r.ok) return;
+    if (r.reason === "ios") this.showToast("📲 iPhone: bấm nút Chia sẻ rồi chọn “Thêm vào Màn hình chính” để chơi toàn màn hình.");
+    else if (r.reason === "denied") this.showToast("Trình duyệt không cho phép vào toàn màn hình lúc này.");
+    else this.showToast("Thiết bị này không hỗ trợ chế độ toàn màn hình.");
+  },
+
+  _syncFullscreenButtons() {
+    if (typeof Viewport === "undefined") return;
+    const on = Viewport.isFullscreen();
+    const offer = Viewport.canOfferFullscreen();
+    if (this.els.btnFullscreen) {
+      this.els.btnFullscreen.classList.toggle("hidden", !offer);
+      this.els.btnFullscreen.innerHTML = on ? this._FS_ICON_EXIT : this._FS_ICON_ENTER;
+      this.els.btnFullscreen.setAttribute("aria-label", on ? "Thoát toàn màn hình" : "Toàn màn hình");
+    }
+    if (this.els.rowSettingsFullscreen) this.els.rowSettingsFullscreen.classList.toggle("hidden", !offer);
+    if (this.els.btnSettingsFullscreen) this.els.btnSettingsFullscreen.textContent = on ? "Thoát" : "Vào";
   },
 
   _refreshPauseButtons() {
@@ -852,6 +909,8 @@ const UI = {
   /* ---------------- VÀO TRẬN ---------------- */
   _enterGameScreen() {
     this.showScreen("game");
+    // Khung chơi vừa hiện ra: tính lại bố cục dọc/ngang + (trên điện thoại) vào toàn màn hình
+    if (typeof Viewport !== "undefined") { Viewport.autoFullscreen(); Viewport.update(true); }
     this.hideOverlay(this.els.overlayResult);
     this.hideOverlay(this.els.overlayPause);
     this.els.btnSpeed.textContent = "x" + Game.run.speed;
@@ -1409,6 +1468,11 @@ const UI = {
     let last = null;
     let pinchDist = 0;
 
+    // Ngưỡng phân biệt "chạm" và "kéo": ~10px CSS bất kể buffer canvas to hay nhỏ
+    const dragLimit = () => {
+      const r = canvas.getBoundingClientRect();
+      return r.width > 0 ? Math.max(this.DRAG_THRESHOLD, 10 * canvas.width / r.width) : this.DRAG_THRESHOLD;
+    };
     const midpoint = () => {
       const pts = [...pointers.values()];
       if (!pts.length) return { x: 0, y: 0 };
@@ -1452,7 +1516,7 @@ const UI = {
       if (!dragging || !last) return;
       const dx = p.x - last.x, dy = p.y - last.y;
       moved += Math.hypot(dx, dy);
-      if (moved > this.DRAG_THRESHOLD) {
+      if (moved > dragLimit()) {
         BattleCamera.panByScreen(dx, dy);
         this._syncCamButtons();
         this._hideTowerPicker();
@@ -1468,13 +1532,13 @@ const UI = {
       try { canvas.releasePointerCapture(ev.pointerId); } catch (e) { /* bỏ qua */ }
       if (pointers.size === 0) {
         // Chạm ngắn, không kéo -> coi như một cú click chọn ô đất.
-        if (dragging && moved <= this.DRAG_THRESHOLD && this._tapClient) {
+        if (dragging && moved <= dragLimit() && this._tapClient) {
           this._handleCanvasTap(this._tapClient.x, this._tapClient.y);
         }
         dragging = false; last = null; pinchDist = 0;
       } else if (pointers.size === 1) {
         last = [...pointers.values()][0];
-        dragging = true; moved = this.DRAG_THRESHOLD + 1; // không biến pinch thành tap
+        dragging = true; moved = 1e9; // không biến pinch thành tap
       }
     };
     canvas.addEventListener("pointerup", endPointer);
@@ -1509,9 +1573,10 @@ const UI = {
       const jump = (ev) => {
         ev.stopPropagation();
         const rect = e.minimap.getBoundingClientRect();
-        const cx = ((ev.clientX !== undefined ? ev.clientX : 0) - rect.left) / rect.width;
-        const cy = ((ev.clientY !== undefined ? ev.clientY : 0) - rect.top) / rect.height;
-        BattleCamera.centerOn(cx * BattleCamera.W, cy * BattleCamera.H);
+        const cx = ((ev.clientX !== undefined ? ev.clientX : 0) - rect.left) / rect.width;    // 0..1 trái -> phải
+        const cy = ((ev.clientY !== undefined ? ev.clientY : 0) - rect.top) / rect.height;    // 0..1 trên -> dưới
+        if (BattleCamera.isPortrait()) BattleCamera.centerOn(cy * BattleCamera.W, (1 - cx) * BattleCamera.H);  // bản đồ xoay 90°
+        else BattleCamera.centerOn(cx * BattleCamera.W, cy * BattleCamera.H);
         this._syncCamButtons();
         if (!Game.run || Game.run.paused) Game.render();
       };
@@ -1534,19 +1599,27 @@ const UI = {
     const el = this.els.minimap;
     if (!el) return;
     const feats = (GAME_DATA.config.features || {});
-    if (feats.miniMapEnabled === false) {
-      if (this.els.minimapWrap) this.els.minimapWrap.classList.add("hidden");
-      return;
-    }
-    if (this.els.minimapWrap) this.els.minimapWrap.classList.remove("hidden");
+    const portrait = BattleCamera.isPortrait();
+    // Màn dọc: cả bản đồ đã vừa khít khung ở zoom 1 nên mini-map là thừa -> chỉ hiện khi đã phóng to.
+    const hide = feats.miniMapEnabled === false || (portrait && BattleCamera.zoom < 1.05);
+    if (this.els.minimapWrap) this.els.minimapWrap.classList.toggle("hidden", hide);
+    if (hide) return;
 
     const now = performance.now();
     if (now - this._miniLast < 80) return;
     this._miniLast = now;
 
+    // Mini-map xoay cùng bản đồ chính: màn dọc dùng khung đứng 108x192
+    const cw = portrait ? 108 : 192, ch = portrait ? 192 : 108;
+    if (el.width !== cw || el.height !== ch) { el.width = cw; el.height = ch; }
+
     const ctx = el.getContext("2d");
     const W = el.width, H = el.height;
-    const sx = W / BattleCamera.W, sy = H / BattleCamera.H;
+    const MW = BattleCamera.W, MH = BattleCamera.H;
+    // toạ độ bản đồ -> toạ độ mini-map
+    const T = portrait
+      ? (mx, my) => ({ x: (1 - my / MH) * W, y: (mx / MW) * H })   // xoay 90° thuận chiều kim đồng hồ
+      : (mx, my) => ({ x: (mx / MW) * W, y: (my / MH) * H });
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = "rgba(24,18,12,.9)";
     ctx.fillRect(0, 0, W, H);
@@ -1560,40 +1633,45 @@ const UI = {
       ctx.strokeStyle = "rgba(201,162,74,.55)";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(path[0].x * sx, path[0].y * sy);
-      for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x * sx, path[i].y * sy);
+      const a = T(path[0].x, path[0].y);
+      ctx.moveTo(a.x, a.y);
+      for (let i = 1; i < path.length; i++) { const q = T(path[i].x, path[i].y); ctx.lineTo(q.x, q.y); }
       ctx.stroke();
     }
     // thành
     if (lv.castle) {
+      const c = T(lv.castle.x, lv.castle.y);
       ctx.fillStyle = "#e8c873";
-      ctx.fillRect(lv.castle.x * sx - 3, lv.castle.y * sy - 3, 6, 6);
+      ctx.fillRect(c.x - 3, c.y - 3, 6, 6);
     }
     const r = game.run;
     if (r) {
       // quân ta (công trình)
       ctx.fillStyle = "#6fd06a";
       for (const t of r.towers) {
-        ctx.fillRect(t.x * sx - 1.5, t.y * sy - 1.5, 3, 3);
+        const q = T(t.x, t.y);
+        ctx.fillRect(q.x - 1.5, q.y - 1.5, 3, 3);
       }
       // quân địch + Boss
       for (const en of r.enemies) {
+        const q = T(en.x, en.y);
         if (en.isBoss) {
           ctx.fillStyle = "#ffd96b";
           ctx.beginPath();
-          ctx.arc(en.x * sx, en.y * sy, 3.2, 0, Math.PI * 2);
+          ctx.arc(q.x, q.y, 3.2, 0, Math.PI * 2);
           ctx.fill();
         } else {
           ctx.fillStyle = "#e05a3c";
-          ctx.fillRect(en.x * sx - 1, en.y * sy - 1, 2, 2);
+          ctx.fillRect(q.x - 1, q.y - 1, 2, 2);
         }
       }
     }
     // khung nhìn hiện tại
     const v = BattleCamera.viewRect();
+    const p1 = T(v.x, v.y), p2 = T(v.x + v.w, v.y + v.h);
     ctx.strokeStyle = "rgba(255,255,255,.8)";
     ctx.lineWidth = 1;
-    ctx.strokeRect(v.x * sx + 0.5, v.y * sy + 0.5, v.w * sx - 1, v.h * sy - 1);
+    ctx.strokeRect(Math.min(p1.x, p2.x) + 0.5, Math.min(p1.y, p2.y) + 0.5, Math.abs(p2.x - p1.x) - 1, Math.abs(p2.y - p1.y) - 1);
   },
 
   /* ---------------- MỞ NHANH BẢNG XÂY ---------------- */

@@ -28,6 +28,18 @@ const BattleCamera = {
   MIN_ZOOM: 1,
   MAX_ZOOM: 3.2,
 
+  /* ---- Hướng nhìn (Giai đoạn 8 - toàn màn hình mobile dọc) ----
+     orient 0 : bản đồ nằm ngang như gốc (canvas 960x540 = hệ toạ độ bản đồ).
+     orient 1 : màn hình dọc, bản đồ được XOAY 90° thuận chiều kim đồng hồ để
+                lấp đầy chiều cao điện thoại: trục x bản đồ chạy từ TRÊN xuống
+                DƯỚI, trục y bản đồ chạy từ PHẢI sang TRÁI. Lúc này canvas là
+                vw x vh pixel, và `pxPerUnit` là số pixel canvas trên mỗi
+                đơn vị bản đồ ở giữa khung (do Renderer3D tính khi dựng khung). */
+  orient: 0,
+  pxPerUnit: 1,
+  vw: 960,
+  vh: 540,
+
   _targetZoom: 1,
   _followBossId: null,
   _enabled: true,
@@ -36,8 +48,20 @@ const BattleCamera = {
   init(mapW, mapH) {
     this.W = mapW || 960;
     this.H = mapH || 540;
+    if (this.orient === 0) { this.vw = this.W; this.vh = this.H; }
     this.reset();
   },
+
+  /* Đặt hướng nhìn + kích thước khung nhìn (canvas). Giữ nguyên vị trí camera. */
+  setOrientation(orient, pxPerUnit, vw, vh) {
+    this.orient = orient ? 1 : 0;
+    this.pxPerUnit = pxPerUnit > 0 ? pxPerUnit : 1;
+    this.vw = vw || this.W;
+    this.vh = vh || this.H;
+    this._clamp();
+  },
+
+  isPortrait() { return this.orient === 1; },
 
   reset() {
     this.x = this.W / 2;
@@ -77,8 +101,15 @@ const BattleCamera = {
   panByScreen(dx, dy) {
     if (!this.enabled()) return;
     this._followBossId = null;
-    this.x -= dx / this.zoom;
-    this.y -= dy / this.zoom;
+    if (this.orient === 1) {
+      // Bản đồ xoay 90°: kéo ngón XUỐNG = tâm ngắm lùi về -x, kéo sang PHẢI = tâm tiến +y.
+      const k = this.zoom * this.pxPerUnit;
+      this.x -= dy / k;
+      this.y += dx / k;
+    } else {
+      this.x -= dx / this.zoom;
+      this.y -= dy / this.zoom;
+    }
     this._clamp();
   },
 
@@ -96,7 +127,7 @@ const BattleCamera = {
   },
 
   zoomStep(inOut) {
-    this.zoomAt(inOut > 0 ? 1.35 : 1 / 1.35, this.W / 2, this.H / 2);
+    this.zoomAt(inOut > 0 ? 1.35 : 1 / 1.35, this.vw / 2, this.vh / 2);
   },
 
   centerOn(mx, my) {
@@ -132,6 +163,13 @@ const BattleCamera = {
   /* ---------------- Đổi toạ độ ---------------- */
   /* Canvas (0..960, 0..540) -> bản đồ. */
   screenToMap(px, py) {
+    if (this.orient === 1) {
+      const k = this.zoom * this.pxPerUnit;
+      return {
+        x: (py - this.vh / 2) / k + this.x,
+        y: -(px - this.vw / 2) / k + this.y,
+      };
+    }
     return {
       x: (px - this.W / 2) / this.zoom + this.x,
       y: (py - this.H / 2) / this.zoom + this.y,
@@ -140,6 +178,13 @@ const BattleCamera = {
 
   /* Bản đồ -> canvas. */
   mapToScreen(mx, my) {
+    if (this.orient === 1) {
+      const k = this.zoom * this.pxPerUnit;
+      return {
+        x: -(my - this.y) * k + this.vw / 2,
+        y: (mx - this.x) * k + this.vh / 2,
+      };
+    }
     return {
       x: (mx - this.x) * this.zoom + this.W / 2,
       y: (my - this.y) * this.zoom + this.H / 2,

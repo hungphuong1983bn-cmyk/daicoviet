@@ -22,6 +22,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   UI.init();
   SoundManager.installUnlockHandler(); // mở khoá Web Audio ở tương tác đầu tiên
   Game.init(document.getElementById("game-canvas"));
+  Viewport.init(document.getElementById("game-canvas")); // khung nhìn dọc/ngang + toàn màn hình (Giai đoạn 8)
   Game.render(); // vẽ khung nền trước khi người chơi bắt đầu
   UI.showScreen("splash");
 });
