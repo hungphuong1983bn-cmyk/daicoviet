@@ -63,6 +63,7 @@
       <button class="hub-tile" id="btn-menu-buildings"><span class="hub-ico">🏹</span><span>Công trình</span></button>
       <button class="hub-tile" id="btn-menu-quests"><span class="hub-ico">📜</span><span>Nhiệm vụ</span></button>
       <button class="hub-tile" id="btn-menu-achievements"><span class="hub-ico">🏆</span><span>Thành tích</span></button>
+      <button class="hub-tile" id="btn-menu-daily"><span class="hub-ico">🎁</span><span>Điểm danh</span><span class="hub-dot" id="hub-daily-dot" hidden></span></button>
       <button class="hub-tile" id="btn-guide"><span class="hub-ico">📖</span><span>Hướng dẫn</span></button>
       <button class="hub-tile" id="btn-settings"><span class="hub-ico">⚙️</span><span>Cài đặt</span></button>
     </div>
@@ -240,6 +241,17 @@
   </div>
 </section>
 
+<!-- ================= MÀN HÌNH ĐIỂM DANH (DAILY REWARD) ================= -->
+<section id="screen-daily" class="screen">
+  <div class="menu-panel wide">
+    <h2 class="panel-title">🎁 Điểm danh nhận thưởng</h2>
+    <p class="panel-sub" id="daily-streak-label"></p>
+    <div class="daily-grid" id="daily-grid"></div>
+    <button class="btn btn-primary btn-hub-main" id="btn-daily-claim">Nhận thưởng hôm nay</button>
+    <button class="btn btn-primary" id="btn-daily-back">Quay lại</button>
+  </div>
+</section>
+
 <!-- ================= MÀN HÌNH CHƠI ================= -->
 <section id="screen-game" class="screen">
 
@@ -376,6 +388,7 @@
 <script src="shared/data-service.js"></script>
 <script src="shared/quest-service.js"></script>
 <script src="shared/achievement-service.js"></script>
+<script src="shared/daily-reward-service.js"></script>
 <script src="js/data.js"></script>
 <script src="js/tower-tiers.js"></script>
 <script src="js/hero-tiers.js"></script>

@@ -298,6 +298,22 @@ const ADMIN_SCHEMAS = {
     ],
   },
 
+  dailyRewards: {
+    label: "Điểm danh",
+    collection: "dailyRewards",
+    columns: ["day", "name", "gold", "exp", "enabled"],
+    fields: [
+      { key: "id", label: "ID", type: "text", required: true, immutable: true },
+      { key: "day", label: "Ngày trong chu kỳ (1-7)", type: "number", required: true,
+        hint: "DailyRewardService lặp lại chu kỳ 7 ngày vô hạn - phải có đúng 1 record cho mỗi ngày 1..7, không được trùng hoặc thiếu." },
+      { key: "name", label: "Tên hiển thị", type: "text", required: true },
+      { key: "icon", label: "Icon", type: "text" },
+      { key: "gold", label: "Gold", type: "number" },
+      { key: "exp", label: "EXP", type: "number" },
+      { key: "enabled", label: "Kích hoạt", type: "checkbox" },
+    ],
+  },
+
   stages: {
     label: "Màn chơi",
     collection: "stages",

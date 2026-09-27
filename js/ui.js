@@ -41,6 +41,7 @@ const UI = {
       heroes: $("screen-heroes"),
       quests: $("screen-quests"),
       achievements: $("screen-achievements"),
+      daily: $("screen-daily"),
       game: $("screen-game"),
 
       btnStart: $("btn-start"),
@@ -77,6 +78,13 @@ const UI = {
       achievementList: $("achievement-list"),
       achievementsProgress: $("achievements-progress"),
       btnAchievementsBack: $("btn-achievements-back"),
+
+      btnMenuDaily: $("btn-menu-daily"),
+      hubDailyDot: $("hub-daily-dot"),
+      dailyGrid: $("daily-grid"),
+      dailyStreakLabel: $("daily-streak-label"),
+      btnDailyClaim: $("btn-daily-claim"),
+      btnDailyBack: $("btn-daily-back"),
 
       hudGold: $("hud-gold"),
       hudHp: $("hud-hp"),
@@ -187,6 +195,9 @@ const UI = {
     e.btnMenuQuests.addEventListener("click", () => this.showScreen("quests"));
     e.btnMenuAchievements.addEventListener("click", () => this.showScreen("achievements"));
     e.btnAchievementsBack.addEventListener("click", () => this.showScreen("menu"));
+    if (e.btnMenuDaily) e.btnMenuDaily.addEventListener("click", () => this.showScreen("daily"));
+    if (e.btnDailyBack) e.btnDailyBack.addEventListener("click", () => this.showScreen("menu"));
+    if (e.btnDailyClaim) e.btnDailyClaim.addEventListener("click", () => this._claimDailyReward());
     e.btnGuideBack.addEventListener("click", () => this.showScreen("menu"));
     e.btnSettingsBack.addEventListener("click", () => this.showScreen("menu"));
     e.btnLevelsBack.addEventListener("click", () => this.showScreen("menu"));
@@ -356,7 +367,7 @@ const UI = {
         if (!this.els.towerPicker.classList.contains("hidden")) { this._hideTowerPicker(); return; }
         if (inGame && !this.els.overlayPause.classList.contains("hidden")) { this.closePause(); return; }
         if (inGame && this.els.overlayResult.classList.contains("hidden")) { this.openPause(); return; }
-        for (const name of ["guide", "settings", "levels", "heroes", "quests", "achievements"]) {
+        for (const name of ["guide", "settings", "levels", "heroes", "quests", "achievements", "daily"]) {
           if (this.els[name] && this.els[name].classList.contains("active")) {
             this.showScreen(name === "heroes" && this._pendingStageId ? "levels" : "menu");
             return;
@@ -441,7 +452,7 @@ const UI = {
 
   /* ---------------- ĐIỀU HƯỚNG MÀN HÌNH ---------------- */
   showScreen(name) {
-    for (const key of ["splash", "menu", "guide", "settings", "levels", "heroes", "quests", "achievements", "codex", "game"]) {
+    for (const key of ["splash", "menu", "guide", "settings", "levels", "heroes", "quests", "achievements", "daily", "codex", "game"]) {
       if (this.els[key]) this.els[key].classList.toggle("active", key === name);
     }
     if (name === "menu") { this._refreshMenuButtons(); this._refreshHubPurse(); }
@@ -450,6 +461,7 @@ const UI = {
     if (name === "heroes") this._renderHeroList();
     if (name === "quests") this._renderQuestList();
     if (name === "achievements") this._renderAchievementList();
+    if (name === "daily") this._renderDailyScreen();
   },
 
   _refreshMenuButtons() {
@@ -463,6 +475,10 @@ const UI = {
     if (this.els.hubGold) this.els.hubGold.textContent = (p.gold || 0).toLocaleString("vi-VN");
     if (this.els.hubExp) this.els.hubExp.textContent = (p.exp || 0).toLocaleString("vi-VN");
     if (this.els.hubStars) this.els.hubStars.textContent = stars + "/30";
+    if (this.els.hubDailyDot) {
+      const status = typeof DailyRewardService !== "undefined" ? DailyRewardService.getStatus() : null;
+      this.els.hubDailyDot.hidden = !(status && status.canClaim);
+    }
   },
 
   _refreshSettingsButtons() {
@@ -877,6 +893,45 @@ const UI = {
       `;
       container.appendChild(card);
     }
+  },
+
+  _renderDailyScreen() {
+    const status = DailyRewardService.getStatus();
+    const grid = this.els.dailyGrid;
+    if (!status || !grid) return;
+    grid.innerHTML = "";
+    for (const day of status.calendar) {
+      const card = document.createElement("div");
+      let cls = "daily-day-card";
+      if (day.claimed) cls += " claimed";
+      if (day.isToday) cls += " today";
+      card.className = cls;
+      card.innerHTML = `
+        <div class="d-num">Ngày ${day.day}</div>
+        <div class="d-icon">${day.icon || "🎁"}</div>
+        <div>${day.gold || 0} 🪙${day.exp ? " · " + day.exp + " EXP" : ""}</div>
+        ${day.claimed ? `<div class="d-status">✔ Đã nhận</div>` : ""}
+      `;
+      grid.appendChild(card);
+    }
+    if (this.els.dailyStreakLabel) {
+      this.els.dailyStreakLabel.textContent =
+        `Chuỗi điểm danh: ${status.streak} ngày liên tiếp · Tổng cộng đã nhận: ${status.totalClaims} lần`;
+    }
+    if (this.els.btnDailyClaim) {
+      this.els.btnDailyClaim.disabled = !status.canClaim;
+      this.els.btnDailyClaim.textContent = status.canClaim
+        ? "Nhận thưởng hôm nay"
+        : "Đã nhận thưởng hôm nay";
+    }
+  },
+
+  _claimDailyReward() {
+    const res = DailyRewardService.claim();
+    if (!res.ok) { this.showToast(res.error || "Không thể điểm danh."); return; }
+    this.showToast(`🎁 Điểm danh ngày ${res.dayInCycle}: +${res.reward.gold || 0} 🪙${res.reward.exp ? " +" + res.reward.exp + " EXP" : ""}`);
+    this._renderDailyScreen();
+    this._refreshHubPurse();
   },
 
   onQuestsCompleted(quests) {

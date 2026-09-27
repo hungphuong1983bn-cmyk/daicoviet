@@ -44,6 +44,7 @@ const AdminApp = {
       ["items", "🎁", "Vật phẩm"],
       ["quests", "📜", "Nhiệm vụ"],
       ["achievements", "🏆", "Thành tích"],
+      ["dailyRewards", "🎁", "Điểm danh"],
       ["rewards", "🏆", "Phần thưởng"],
       ["economy", "💰", "Kinh tế game"],
       ["config", "⚙️", "Cấu hình game"],
@@ -95,7 +96,7 @@ const AdminApp = {
     const titles = {
       dashboard: "Tổng quan", players: "Người chơi", heroes: "Tướng", buildings: "Công trình",
       enemies: "Quân địch", bosses: "Boss", stages: "Màn chơi", waves: "Wave", skills: "Kỹ năng",
-      items: "Vật phẩm", quests: "Nhiệm vụ", rewards: "Phần thưởng", achievements: "Thành tích", economy: "Kinh tế game",
+      items: "Vật phẩm", quests: "Nhiệm vụ", rewards: "Phần thưởng", achievements: "Thành tích", dailyRewards: "Điểm danh", economy: "Kinh tế game",
       config: "Cấu hình game", backup: "Backup / Restore", logs: "Nhật ký Admin",
     };
     title.textContent = titles[section] || section;

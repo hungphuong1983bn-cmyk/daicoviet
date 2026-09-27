@@ -33,11 +33,12 @@ const DataService = (() => {
     items: "collection:items",
     rewards: "collection:rewards",
     achievements: "collection:achievements",
+    dailyRewards: "collection:dailyRewards",
     adminUsers: "collection:adminUsers",
     adminLogs: "collection:adminLogs",
   };
 
-  const SCHEMA_VERSION = 12;
+  const SCHEMA_VERSION = 13;
 
   /* ---------------------------------------------------------
      GIAI ĐOẠN 6 - HỆ THỐNG CẤP VŨ KHÍ / CÔNG TRÌNH 1 -> 10
@@ -1851,6 +1852,23 @@ const DataService = (() => {
     ];
   }
 
+  /* Điểm danh 7 ngày (mục Daily Reward). Admin CRUD được như mọi
+     collection khác (giống items/rewards). Mảng gồm đúng 7 mốc
+     day:1..7 - DailyRewardService lặp lại chu kỳ này (không có "hết
+     thưởng"), ngày 7 có phần thưởng cao nhất để khuyến khích chuỗi
+     điểm danh liên tục. */
+  function defaultDailyRewards() {
+    return [
+      { id: "daily_1", day: 1, name: "Ngày 1", gold: 20, exp: 0, icon: "🪙", enabled: true },
+      { id: "daily_2", day: 2, name: "Ngày 2", gold: 30, exp: 5, icon: "🪙", enabled: true },
+      { id: "daily_3", day: 3, name: "Ngày 3", gold: 40, exp: 5, icon: "🪙", enabled: true },
+      { id: "daily_4", day: 4, name: "Ngày 4", gold: 60, exp: 10, icon: "💰", enabled: true },
+      { id: "daily_5", day: 5, name: "Ngày 5", gold: 80, exp: 10, icon: "💰", enabled: true },
+      { id: "daily_6", day: 6, name: "Ngày 6", gold: 100, exp: 15, icon: "💰", enabled: true },
+      { id: "daily_7", day: 7, name: "Ngày 7 (Đại thưởng)", gold: 200, exp: 30, icon: "🎁", enabled: true },
+    ];
+  }
+
   function defaultPlayers() {
     return [
       {
@@ -1871,6 +1889,7 @@ const DataService = (() => {
         heroSkillLevels: { dinh_bo_linh: 1 }, // cấp KỸ NĂNG chủ động của từng tướng (Giai đoạn 4)
         selectedHero: "dinh_bo_linh",
         questProgress: {},   // { questId: { done:false, claimed:false, progressValue:0 } }
+        dailyReward: { streak: 0, lastClaimDate: null, totalClaims: 0 }, // Điểm danh - lastClaimDate dạng "YYYY-MM-DD" theo giờ máy người chơi
         stats: { totalKills: 0, totalRuns: 0, wins: 0, losses: 0, totalBossKills: 0, towersBuilt: 0, towersSold: 0 },
         settings: { sound: true, sfx: true, music: true, tutorialSeen: false },
         banned: false,
@@ -1901,6 +1920,7 @@ const DataService = (() => {
       items: defaultItems(),
       rewards: defaultRewards(),
       achievements: defaultAchievements(),
+      dailyRewards: defaultDailyRewards(),
       adminUsers: defaultAdminUsers(),
       adminLogs: [],
     };
@@ -2437,6 +2457,30 @@ const DataService = (() => {
     console.info("[DataService] Đã di trú lên schemaVersion 12 (Giai đoạn 7): Tướng 10 cấp (trước là 5), giảm hệ số bị động mỗi cấp để tổng sức mạnh cấp 10 không gấp đôi cấp 5 cũ.");
   }
 
+  /* Điểm danh (Daily Reward): vá player.dailyReward cho save cũ chưa
+     có field này, và seed collection "dailyRewards" nếu cài từ bản
+     backup cũ chưa từng có (StorageService.has() đã seed cho máy MỚI
+     qua ensureSeeded()/defaultAll(), nhưng máy import backup cũ thì
+     collection này không tồn tại trong snapshot -> cần vá thủ công
+     giống các ensure* khác). */
+  function ensureDailyRewardFields() {
+    if (!StorageService.has(KEYS.dailyRewards) || list("dailyRewards").length === 0) {
+      StorageService.set(KEYS.dailyRewards, defaultDailyRewards());
+    }
+    replaceAll("players", list("players").map((p) => {
+      if (p.dailyReward) return p;
+      return Object.assign({}, p, { dailyReward: { streak: 0, lastClaimDate: null, totalClaims: 0 } });
+    }));
+  }
+
+  function migrateSchemaV12ToV13() {
+    const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
+    if (currentVersion >= 13) return;
+    ensureDailyRewardFields();
+    StorageService.set(KEYS.schemaVersion, 13);
+    console.info("[DataService] Đã di trú lên schemaVersion 13: thêm hệ thống Điểm danh (Daily Reward) - player.dailyReward + collection dailyRewards, không đổi dữ liệu khác.");
+  }
+
   /* Di trú schemaVersion 8 -> 9 (Giai đoạn 4: combat/tower/hero/map/audio). */
   function migrateSchemaV8ToV9() {
     const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
@@ -2466,6 +2510,7 @@ const DataService = (() => {
     migrateSchemaV9ToV10();
     migrateSchemaV10ToV11();
     migrateSchemaV11ToV12();
+    migrateSchemaV12ToV13();
     if (!StorageService.has(KEYS.schemaVersion)) {
       StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
     }
@@ -2499,6 +2544,7 @@ const DataService = (() => {
   const ARRAY_COLLECTIONS = [
     "players", "heroes", "buildings", "enemies", "bosses",
     "stages", "skills", "quests", "items", "rewards",
+    "achievements", "dailyRewards", // "achievements" thiếu ở đây trước đây là BUG: Admin tạo mới thành tích sẽ ném lỗi "Collection không hỗ trợ create()" dù update()/remove() không kiểm tra danh sách này nên vẫn sửa/xoá được - phát hiện khi audit cho tính năng Điểm danh
     "adminUsers", "adminLogs",
   ];
 
@@ -2625,6 +2671,8 @@ const DataService = (() => {
     ensureGiaiDoan4Fields(); // vá toàn bộ field Giai đoạn 4 nếu snapshot import là bản backup cũ (v8)
     ensureGiaiDoan5Fields(); // vá cờ 3D của Giai đoạn 5 (v9 -> v10)
     ensureGiaiDoan6Fields(); // vá 10 Level / Wave mới / công trình 10 cấp / camera (v10 -> v11)
+    ensureGiaiDoan7Fields(); // vá Tướng 10 cấp (v11 -> v12) - THIẾU Ở ĐÂY LÀ BUG CŨ: import backup v10 trở về trước sẽ ép schemaVersion lên mới nhất bên dưới nhưng bỏ qua bước vá này, để lại players/heroes ở trạng thái không nhất quán với schemaVersion đã ghi. Phát hiện khi audit cho tính năng Điểm danh.
+    ensureDailyRewardFields(); // vá player.dailyReward + seed collection dailyRewards (v12 -> v13)
     StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
   }
 
