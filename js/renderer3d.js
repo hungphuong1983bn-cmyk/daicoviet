@@ -610,19 +610,30 @@ const Renderer3D = {
         core = new THREE.Mesh(new THREE.CylinderGeometry(11, 14, 30, 10), body);
         core.position.y = 27;
     }
+    // NGOẠI HÌNH RIÊNG THEO TỪNG VŨ KHÍ THẬT (không chỉ theo role): tra
+    // WeaponVisuals.buildTowerExtras() theo def.id. Đây là phần khiến
+    // "Cung" và "Nỏ thần" (cùng role dps) không còn giống hệt nhau.
+    const wv = (typeof WeaponVisuals !== "undefined")
+      ? WeaponVisuals.buildTowerExtras(THREE, def, (c, o) => this._mat(c, o))
+      : { extras: [], hideDefaultCore: false };
+    if (wv.hideDefaultCore) core.visible = false;
     g.add(core);
 
-    // nòng / hướng bắn, xoay theo mục tiêu
+    // nòng / hướng bắn, xoay theo mục tiêu. Nếu vũ khí có hình phụ riêng
+    // (cung/nỏ/rìu/hoả tiễn/...), gắn CHÍNH các mesh đó vào turret để chúng
+    // xoay theo hướng bắn thay vì dựng cứng một thanh nòng chung chung.
     const turret = new THREE.Group();
-    if (def.role !== "support") {
+    if (wv.extras.length > 0) {
+      for (const extra of wv.extras) turret.add(extra);
+    } else if (def.role !== "support") {
       const barrel = new THREE.Mesh(new THREE.BoxGeometry(26, 5, 5), this._mat(0x3a2f22));
       barrel.position.x = 13;
       turret.add(barrel);
     }
-    turret.position.y = core.position.y + 6;
     g.add(turret);
     g.userData.turret = turret;
     g.userData.core = core;
+    g.userData.hasWeaponExtras = wv.extras.length > 0;
 
     // vòng cấp độ (mỗi cấp một vòng vàng)
     const rings = new THREE.Group();
@@ -808,7 +819,10 @@ const Renderer3D = {
      _trimPool()/_disposeGroup() sẽ gọi .dispose() trên geometry khi dọn bớt
      pool - chia sẻ một geometry dùng chung sẽ làm hỏng các đạn khác đang
      tham chiếu cùng geometry đó. */
-  _buildProjGeometry(role) {
+  _buildProjGeometry(shapeKey, role) {
+    if (typeof WeaponVisuals !== "undefined") {
+      return WeaponVisuals.buildProjectileGeometry3D(THREE, shapeKey, role);
+    }
     switch (role) {
       case "siege": return new THREE.IcosahedronGeometry(6, 0);       // đá công thành
       case "aoe": return new THREE.OctahedronGeometry(5.5, 0);        // đạn nổ diện rộng
@@ -976,30 +990,35 @@ const Renderer3D = {
       let mesh = this._projPool[i];
       if (!mesh) { mesh = this._makeProjMesh(); this._projPool.push(mesh); }
       mesh.visible = true;
-      const shapeKey = (p.role === "siege" || p.role === "aoe" || p.role === "control") ? p.role : "dps";
+      // Hình đạn RA THEO VŨ KHÍ THẬT (weaponId), không còn gộp chung theo role.
+      const shapeKey = p.weaponId || p.role || "dps";
       const body = mesh.userData.body;
       if (mesh.userData.shapeKey !== shapeKey) {
         if (body.geometry) body.geometry.dispose();
-        body.geometry = this._buildProjGeometry(shapeKey);
+        body.geometry = this._buildProjGeometry(shapeKey, p.role);
         mesh.userData.shapeKey = shapeKey;
       }
       body.material.color.set(p.color || "#e8c873");
       const tier = p.tierIndex || 0;
       const tierScale = 1 + tier * 0.08;
-      const arc = Math.sin(Math.min(1, p._t || 0) * Math.PI) * (shapeKey === "siege" || shapeKey === "aoe" ? 20 : 12);
+      const bigArcRoles = p.role === "siege" || p.role === "aoe";
+      const arc = Math.sin(Math.min(1, p._t || 0) * Math.PI) * (bigArcRoles ? 20 : 12);
       mesh.position.set(this._wx(p.x), 26 + arc, this._wz(p.y));
       body.scale.setScalar((p.splashRadius > 0 ? 1.6 : 1) * tierScale);
-      // Tên/tia bắn thẳng: xoay mũi theo hướng bay để trông giống mũi tên thật.
-      if (shapeKey === "dps" && p.target) {
+      // Tên/mũi thẳng xoay theo hướng bay; đá/rìu xoay lăn khi bay.
+      if (p.target && (shapeKey === "cung_thu" || shapeKey === "no_than" || shapeKey === "hoa_tien" || shapeKey === "tam_doc" || (!p.role || p.role === "dps"))) {
         body.rotation.z = -Math.atan2(p.target.y - p.y, p.target.x - p.x) + Math.PI / 2;
-      } else if (shapeKey === "siege") {
+      } else if (shapeKey === "may_ban_da" || p.role === "siege") {
         body.rotation.x = (p._age || 0) * 3;
+      } else if (shapeKey === "riu_chien") {
+        body.rotation.z = (p._age || 0) * 8;
       }
       const glow = mesh.userData.glow;
-      if (tier >= 3) {
+      const glowColor = (typeof WeaponVisuals !== "undefined") ? WeaponVisuals.accentFor(p.weaponId, p.role) : (p.color || "#ffe36b");
+      if (tier >= 3 || p.weaponId === "hoa_tien" || p.weaponId === "dao_si" || p.weaponId === "thap_hoa_cong") {
         glow.visible = true;
         glow.scale.setScalar(1.2 + tier * 0.35);
-        glow.material.color.set(p.color || "#ffe36b");
+        glow.material.color.set(glowColor);
       } else {
         glow.visible = false;
       }

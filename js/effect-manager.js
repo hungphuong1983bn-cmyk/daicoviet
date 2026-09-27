@@ -32,6 +32,9 @@ const EffectManager = {
     this._sparks.length = 0;
     this._rings.length = 0;
     this._beams.length = 0;
+    this._particles.length = 0;
+    this._slashes.length = 0;
+    this._bolts.length = 0;
     this._shake = { magnitude: 0, timer: 0, duration: 0 };
   },
 
@@ -84,6 +87,125 @@ const EffectManager = {
     if (isCritical) this.spawnSpark(x, y, "#ffdf6b", 6);
   },
 
+  /* ---------------------------------------------------------
+     spawnImpact(kind, x, y, opts) — MỖI LOẠI VA CHẠM MỘT HÌNH DẠNG/MÀU
+     SẮC/CHUYỂN ĐỘNG RIÊNG (mục 4 & 9 trong yêu cầu nâng cấp), thay vì
+     dùng chung spawnSpark(màu) cho mọi vũ khí/skill như trước.
+     kind: "pierce" | "slash" | "blunt" | "fire" | "ice" | "poison" |
+           "lightning" | "explosion" | "magic" | "slow" | "heal" | "buff"
+     --------------------------------------------------------- */
+  spawnImpact(kind, x, y, opts) {
+    opts = opts || {};
+    const n = opts.count;
+    // Nếu vũ khí có sát thương lan toả (splash), luôn vẽ vòng lan đúng bán
+    // kính thật để người chơi thấy vùng ảnh hưởng, MÀU theo loại hiệu ứng
+    // (không còn cố định vàng cho mọi vụ nổ).
+    if (opts.radius > 0) {
+      const KIND_BLAST_COLOR = {
+        fire: "#ff7a3d", ice: "#bfe6ff", poison: "#7fbf4a", lightning: "#f5f0c8",
+        magic: "#c8a8ff", explosion: opts.color || "#e8c873", blunt: opts.color || "#e8d7b0",
+      };
+      this.spawnBlast(x, y, opts.radius, opts.blastColor || KIND_BLAST_COLOR[kind] || opts.color || "#e8c873");
+    }
+    switch (kind) {
+      case "fire":
+        // hạt lửa bay NGƯỢC trọng lực (bốc lên), màu cam-đỏ.
+        this._spawnParticles(x, y, n || 10, { color: "#ff8a3d", altColor: "#ffdf6b", rise: true, speed: 55, life: 0.5, shape: "flame" });
+        break;
+      case "ice":
+        // tinh thể băng: rơi CHẬM, gần như đứng yên tại chỗ, màu xanh nhạt.
+        this._spawnParticles(x, y, n || 8, { color: "#bfe6ff", altColor: "#ffffff", rise: false, speed: 18, life: 0.55, gravity: 10, shape: "shard" });
+        break;
+      case "poison":
+        // khói độc lan toả, hạt bay lên chậm rồi tản ra, màu xanh lá.
+        this._spawnParticles(x, y, n || 9, { color: "#7fbf4a", altColor: "#9ede6a", rise: true, speed: 22, life: 0.75, gravity: -4, shape: "puff" });
+        break;
+      case "lightning":
+        // 1 tia chớp răng cưa + hạt trắng-vàng bắn toé, không rơi (không trọng lực).
+        this._spawnBolt(x, y, opts.toX, opts.toY, "#f5f0c8");
+        this._spawnParticles(x, y, n || 10, { color: "#fff6c8", altColor: "#9fd8ff", rise: false, speed: 90, life: 0.22, gravity: 0, shape: "spark" });
+        break;
+      case "slash":
+        // 1-2 vệt chém cong, không phải hạt tròn.
+        this._slashes.push({ x, y, angle: opts.angle || (Math.random() * Math.PI * 2), life: 0.22, age: 0, color: opts.color || "#eaeaea" });
+        this._spawnParticles(x, y, n || 4, { color: "#eaeaea", speed: 70, life: 0.25, gravity: 60, shape: "spark" });
+        break;
+      case "explosion":
+        if (!(opts.radius > 0)) this.spawnBlast(x, y, 40, opts.color || "#e8c873");
+        this._spawnParticles(x, y, n || 14, { color: opts.color || "#e8c873", altColor: "#ff9a3d", speed: 100, life: 0.4, gravity: 140, shape: "spark" });
+        if ((opts.radius || 40) >= 55) this.shake(2.5, 0.2);
+        break;
+      case "magic":
+        this._spawnParticles(x, y, n || 8, { color: "#c8a8ff", altColor: "#e6d8ff", rise: false, speed: 50, life: 0.4, gravity: 0, shape: "shard" });
+        break;
+      case "slow":
+        this._spawnParticles(x, y, n || 6, { color: "#8cc8ff", speed: 30, life: 0.4, gravity: 40, shape: "puff" });
+        break;
+      case "heal":
+        this._spawnParticles(x, y, n || 6, { color: "#7bc96f", altColor: "#c8f0b8", rise: true, speed: 26, life: 0.6, gravity: -18, shape: "puff" });
+        break;
+      case "buff":
+        this._spawnParticles(x, y, n || 6, { color: "#ffe36b", rise: true, speed: 20, life: 0.6, gravity: -12, shape: "shard" });
+        break;
+      case "pierce":
+        this._spawnParticles(x, y, n || 4, { color: opts.color || "#e8c873", speed: 60, life: 0.28, gravity: 90, shape: "spark" });
+        break;
+      case "blunt":
+      default:
+        this.spawnSpark(x, y, opts.color || "#e8c873", n || 6);
+    }
+  },
+
+  /* Va chạm của MỘT Projectile: chọn kind qua WeaponVisuals (nếu có) để mỗi
+     vũ khí/hiệu ứng trạng thái có hình va chạm riêng, không dùng chung 1 hình. */
+  spawnImpactForProjectile(proj, x, y) {
+    const kind = (typeof WeaponVisuals !== "undefined") ? WeaponVisuals.impactKind(proj) : "blunt";
+    this.spawnImpact(kind, x, y, { color: proj.color, radius: proj.splashRadius });
+  },
+
+  _particles: [],
+  _slashes: [],
+  _bolts: [],
+  _MAX_PARTICLES: 220,
+
+  _spawnParticles(x, y, count, cfg) {
+    if (this._particles.length >= this._MAX_PARTICLES) return;
+    const n = Math.min(count, this._MAX_PARTICLES - this._particles.length);
+    for (let i = 0; i < n; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = (cfg.speed || 40) * (0.5 + Math.random() * 0.7);
+      const life = cfg.life || 0.4;
+      this._particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - (cfg.rise ? speed * 0.6 : 0),
+        gravity: cfg.gravity === undefined ? 90 : cfg.gravity,
+        life, age: 0,
+        color: (Math.random() < 0.5 || !cfg.altColor) ? cfg.color : cfg.altColor,
+        shape: cfg.shape || "spark",
+        size: 1.8 + Math.random() * 1.6,
+      });
+    }
+  },
+
+  _spawnBolt(x, y, toX, toY, color) {
+    if (this._bolts.length > 20) return;
+    const x2 = (toX === undefined) ? x + (Math.random() - 0.5) * 30 : toX;
+    const y2 = (toY === undefined) ? y - 26 - Math.random() * 14 : toY;
+    // đường zig-zag: vài đoạn gãy khúc ngẫu nhiên giữa 2 điểm.
+    const segs = 4;
+    const pts = [{ x, y }];
+    for (let i = 1; i < segs; i++) {
+      const t = i / segs;
+      pts.push({
+        x: x + (x2 - x) * t + (Math.random() - 0.5) * 10,
+        y: y + (y2 - y) * t + (Math.random() - 0.5) * 10,
+      });
+    }
+    pts.push({ x: x2, y: y2 });
+    this._bolts.push({ pts, color: color || "#f5f0c8", life: 0.18, age: 0 });
+  },
+
   spawnSpark(x, y, color, count) {
     let n = count || 4;
     if (this._sparks.length + n > this._MAX_SPARKS) n = Math.max(0, this._MAX_SPARKS - this._sparks.length);
@@ -125,12 +247,75 @@ const EffectManager = {
 
     for (const b of this._beams) b.age += dt;
     if (this._beams.length > 0) this._beams = this._beams.filter((b) => b.age < b.life);
+
+    for (const p of this._particles) {
+      p.age += dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += p.gravity * dt;
+    }
+    if (this._particles.length > 0) this._particles = this._particles.filter((p) => p.age < p.life);
+
+    for (const s of this._slashes) s.age += dt;
+    if (this._slashes.length > 0) this._slashes = this._slashes.filter((s) => s.age < s.life);
+
+    for (const bo of this._bolts) bo.age += dt;
+    if (this._bolts.length > 0) this._bolts = this._bolts.filter((bo) => bo.age < bo.life);
   },
 
   draw(ctx) {
     if (this._sparks.length === 0 && this._numbers.length === 0 &&
-        this._rings.length === 0 && this._beams.length === 0) return;
+        this._rings.length === 0 && this._beams.length === 0 &&
+        this._particles.length === 0 && this._slashes.length === 0 && this._bolts.length === 0) return;
     ctx.save();
+
+    // tia sét răng cưa (khác hẳn vệt thẳng của Tướng)
+    for (const bo of this._bolts) {
+      const a = Math.max(0, 1 - bo.age / bo.life);
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = bo.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      bo.pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // vệt chém (khác hẳn hạt tròn)
+    for (const s of this._slashes) {
+      const a = Math.max(0, 1 - s.age / s.life);
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 9, s.angle - 0.6, s.angle + 0.6);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // hạt hiệu ứng theo shape riêng (flame/shard/puff/spark)
+    for (const p of this._particles) {
+      const a = Math.max(0, 1 - p.age / p.life);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      if (p.shape === "flame") {
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - p.size * 1.6);
+        ctx.quadraticCurveTo(p.x + p.size, p.y, p.x, p.y + p.size * 1.2);
+        ctx.quadraticCurveTo(p.x - p.size, p.y, p.x, p.y - p.size * 1.6);
+        ctx.fill();
+      } else if (p.shape === "shard") {
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - p.size * 1.4); ctx.lineTo(p.x + p.size, p.y); ctx.lineTo(p.x, p.y + p.size * 1.4); ctx.lineTo(p.x - p.size, p.y);
+        ctx.closePath(); ctx.fill();
+      } else if (p.shape === "puff") {
+        ctx.globalAlpha = a * 0.6;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 1.8, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
 
     // vệt đánh của Tướng
     for (const b of this._beams) {

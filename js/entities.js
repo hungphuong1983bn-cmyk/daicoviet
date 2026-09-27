@@ -808,6 +808,7 @@ class Projectile {
     this.color = tower.def.color;
     this.dmgType = tower.damageType();
     this.role = tower.def.role;
+    this.weaponId = tower.def.id; // dùng để tra hình dạng RIÊNG trong WeaponVisuals
     this.tierIndex = (typeof TowerTiers !== "undefined") ? TowerTiers.indexOf(tower.def, tower.level) : 0;
     this.target = target;       // tham chiếu trực tiếp -> không quét mảng mỗi frame
     this.targetId = target.id;
@@ -857,10 +858,7 @@ class Projectile {
     };
     if (this.splashRadius > 0) {
       if (typeof SoundManager !== "undefined") SoundManager.play("explosion");
-      if (typeof EffectManager !== "undefined") {
-        if (this.splashRadius >= 60) EffectManager.shake(2.5, 0.18);
-        EffectManager.spawnBlast(target.x, target.y, this.splashRadius, this.color);
-      }
+      if (this.splashRadius >= 60 && typeof EffectManager !== "undefined") EffectManager.shake(2.5, 0.18);
       for (const e of enemies) {
         if (!e.alive) continue;
         const d = Math.hypot(e.x - target.x, e.y - target.y);
@@ -872,6 +870,12 @@ class Projectile {
     } else {
       target.takeDamage(finalDamage, meta);
       this._applyEffectIfAny(target);
+    }
+    // HIỆU ỨNG VA CHẠM RIÊNG cho từng vũ khí/loại hiệu ứng trạng thái
+    // (mục 4 & 9): tên/tia/độc/băng/sét/nổ mỗi loại một hình khác nhau,
+    // không còn dùng chung một tia lửa màu.
+    if (typeof EffectManager !== "undefined") {
+      EffectManager.spawnImpactForProjectile(this, target.x, target.y);
     }
     this.target = null; // nhả tham chiếu ngay, không giữ enemy đã chết trong bộ nhớ
   }
@@ -900,30 +904,38 @@ class Projectile {
       ctx.fillStyle = isMagic ? "rgba(180,140,255,.35)" : "rgba(255,220,140,.3)";
       ctx.fill();
     }
+    // Hình dạng đạn RIÊNG cho từng vũ khí thật (Cung/Nỏ/Voi/Cọc/Máy bắn đá/
+    // Rìu/Hoả tiễn/Khiên/Hoả công/Đạo sĩ/Độc...), tra theo weaponId trong
+    // WeaponVisuals. Nếu thiếu file/registry (không nên xảy ra), rơi về
+    // hình tròn/thoi theo role như bản cũ để game không bao giờ vỡ hình.
+    if (typeof WeaponVisuals !== "undefined") {
+      WeaponVisuals.drawProjectile2D(ctx, this);
+      return;
+    }
     ctx.save();
     ctx.translate(this.x, this.y);
     const size = (isMagic ? 3.4 : 4) + tier * 0.35;
     ctx.fillStyle = this.color;
     switch (this.role) {
-      case "siege": // đá công thành: khối vuông nặng nề, xoay khi bay
+      case "siege":
         ctx.rotate(this._age * 3);
         ctx.fillRect(-size, -size, size * 2, size * 2);
         break;
-      case "control": // lưới/xích khống chế: vòng tròn rỗng
+      case "control":
         ctx.beginPath();
         ctx.arc(0, 0, size, 0, Math.PI * 2);
         ctx.lineWidth = 2;
         ctx.strokeStyle = this.color;
         ctx.stroke();
         break;
-      case "aoe": { // đạn nổ diện rộng: hình thoi
+      case "aoe": {
         ctx.beginPath();
         ctx.moveTo(0, -size); ctx.lineTo(size, 0); ctx.lineTo(0, size); ctx.lineTo(-size, 0);
         ctx.closePath();
         ctx.fill();
         break;
       }
-      default: // dps mặc định: mũi tên/tia thẳng
+      default:
         ctx.beginPath();
         ctx.arc(0, 0, size, 0, Math.PI * 2);
         ctx.fill();
