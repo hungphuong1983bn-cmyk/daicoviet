@@ -441,6 +441,12 @@ const Game = {
     const heroEnt = r.heroEntity;
     const slowAura = (r.heroPassive && r.heroPassive.type === "slow_aura")
       ? (r.heroPassive.value || 0) * (r.heroLevel || 1) : 0;
+    // --- hào quang phá giáp của Tướng (Hệ thống Skill mới: passive
+    //     armor_shred_aura, hiện dùng bởi Đinh Điền) - cùng cơ chế "trong
+    //     tầm mới có hiệu lực" như slowAura ở trên, nhưng giảm giáp/kháng
+    //     thay vì tốc độ (áp dụng thật trong Enemy.takeDamage()). ---
+    const shredAura = (r.heroPassive && r.heroPassive.type === "armor_shred_aura")
+      ? (r.heroPassive.value || 0) * (r.heroLevel || 1) : 0;
 
     // --- cập nhật địch ---
     const pendingSpawns = [];
@@ -449,6 +455,11 @@ const Game = {
         e._extraSlow = Math.hypot(e.x - heroEnt.x, e.y - heroEnt.y) <= heroEnt.range ? slowAura : 0;
       } else {
         e._extraSlow = 0;
+      }
+      if (shredAura > 0 && heroEnt) {
+        e._extraSunder = Math.hypot(e.x - heroEnt.x, e.y - heroEnt.y) <= heroEnt.range ? shredAura : 0;
+      } else {
+        e._extraSunder = 0;
       }
       e.update(dt, mapSpeedMult);
 
@@ -470,6 +481,12 @@ const Game = {
         r.heroExpGained += Math.round((e.def.rewardExp || 0) * (rewardMult * (e.rewardMult || 1)));
         r.killCount++;
         GameState.recordKill(1);
+        // Hệ thống Skill mới: passive "heal_on_kill" (Vạn Hạnh) - mỗi lần
+        // hạ địch, thành được hồi thêm một chút HP, nhân theo cấp tướng.
+        if (r.heroPassive && r.heroPassive.type === "heal_on_kill") {
+          const healOnKill = (r.heroPassive.value || 0) * (r.heroLevel || 1);
+          r.hp = Math.min(r.maxHp, r.hp + healOnKill);
+        }
         if (e.isBoss) {
           r.bossKilledThisRun = true; r.bossKillCount++; GameState.recordBossKill(1);
           EffectManager.shake(5, 0.45);
@@ -555,7 +572,7 @@ const Game = {
 
     // --- tháp + tướng + đạn ---
     for (const t of r.towers) t.update(dt, r.enemies, r.projectiles, towerBuff);
-    if (heroEnt) heroEnt.update(dt, r.enemies);
+    if (heroEnt) heroEnt.update(dt, r.enemies, r);
     for (const p of r.projectiles) p.update(dt, r.enemies);
     if (r.projectiles.some((p) => !p.alive)) r.projectiles = r.projectiles.filter((p) => p.alive);
 
@@ -921,7 +938,10 @@ const Game = {
     return true;
   },
 
-  /* ---------------- KỸ NĂNG CHỦ ĐỘNG ---------------- */
+  /* ---------------- KỸ NĂNG CHỦ ĐỘNG ----------------
+     effect: damage_all | heal_castle | buff_attack_speed | buff_damage |
+             stun_all | shield_castle | armor_shred_all (Hệ thống Skill mới,
+             xem shared/data-service.js defaultSkills()). */
   useSkill() {
     const r = this.run;
     if (!r || !r.skillDef || r.skillCooldownRemaining > 0 || r.status !== "playing") return false;
@@ -975,6 +995,21 @@ const Game = {
         r.castleShieldRemaining = skill.duration || 10;
         r.castleShieldValue = Math.round((skill.value || 3) * scale);
         break;
+      case "armor_shred_all": {
+        // Hệ thống Skill mới: "Phá Giáp Liên Hoàn" (Đinh Điền) - giảm %
+        // giáp + kháng phép toàn bộ địch trong `duration` giây, dùng lại
+        // đúng cơ chế "sunder" đã áp cho Enemy.takeDamage().
+        const dur = (skill.duration || 6) * skillScale;
+        const shred = Math.min(0.9, (skill.value || 0.35) * scale);
+        for (const e of r.enemies) {
+          if (!e.alive) continue;
+          if (skill.damage) e.takeDamage(skill.damage * scale, { damageType: dmgType });
+          e.applyStatusEffect({ type: "sunder", value: shred, duration: dur });
+          EffectManager.spawnSpark(e.x, e.y, "#ff8a3d", 5);
+        }
+        EffectManager.shake(2.5, 0.2);
+        break;
+      }
       default:
         return false;
     }

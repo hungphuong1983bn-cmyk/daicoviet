@@ -847,7 +847,20 @@ const Renderer3D = {
     halo.rotation.x = -Math.PI / 2;
     halo.position.y = 2;
     g.add(cloak, head, crown, halo);
-    g.userData = { halo, cloak };
+    // VŨ KHÍ HERO (Hệ thống mới): tra js/hero-weapons.js theo đúng ID
+    // Tướng (giống hệt cách tháp tra WeaponVisuals.buildTowerExtras() theo
+    // ID Công trình) - gắn vào một nhóm riêng đặt bên hông phải Tướng,
+    // KHÔNG đụng cloak/head/crown/halo cũ nên tước hiệu (hero-tiers.js)
+    // vẫn đổi màu áo/hào quang y như trước khi có vũ khí riêng.
+    const weaponGroup = new THREE.Group();
+    weaponGroup.position.set(9, 0, 4);
+    weaponGroup.rotation.y = -0.35;
+    if (typeof HeroWeapons !== "undefined" && heroDef) {
+      const extras = HeroWeapons.build3D(THREE, heroDef.id, heroDef, (c, o) => this._mat(c, o));
+      for (const mesh of extras) weaponGroup.add(mesh);
+    }
+    g.add(weaponGroup);
+    g.userData = { halo, cloak, weaponGroup };
     g.traverse((m) => { if (m.isMesh) m.castShadow = this.renderer.shadowMap.enabled; });
     this._dynGroup.add(g);
     return g;
@@ -1029,7 +1042,17 @@ const Renderer3D = {
     // --- tướng ---
     const heroEnt = run ? run.heroEntity : null;
     if (heroEnt) {
-      if (!this._hero) this._hero = this._makeHeroMesh(heroEnt.def);
+      // Tướng đổi giữa 2 ván (vũ khí 3D khác nhau theo id) -> dựng lại mesh,
+      // nếu không sẽ giữ nguyên vũ khí của Tướng ván trước.
+      if (this._hero && this._hero.userData.heroId !== heroEnt.def.id) {
+        this._dynGroup.remove(this._hero);
+        this._disposeGroup(this._hero);
+        this._hero = null;
+      }
+      if (!this._hero) {
+        this._hero = this._makeHeroMesh(heroEnt.def);
+        this._hero.userData.heroId = heroEnt.def.id;
+      }
       this._hero.visible = true;
       this._hero.position.set(this._wx(heroEnt.x), 0, this._wz(heroEnt.y));
       this._hero.rotation.y = Math.sin(t * 0.8) * 0.25;
@@ -1054,6 +1077,9 @@ const Renderer3D = {
       const rankHaloScale = this._hero.userData.rankHaloScale || 1;
       halo.material.opacity = (0.45 + rankGlow * 0.25) + Math.min(0.5, flash * 1.6);
       halo.scale.setScalar(rankHaloScale * (1 + Math.min(1.6, flash * 3)));
+      // Vũ khí vung nhẹ mỗi khi Tướng ra đòn (chỉ trang trí).
+      const wg = this._hero.userData.weaponGroup;
+      if (wg) wg.rotation.z = Math.min(0.6, (heroEnt._attackFlash || 0) * 3.2);
     } else if (this._hero) {
       this._hero.visible = false;
     }

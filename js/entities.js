@@ -41,6 +41,11 @@ const STATUS_META = {
   burn:   { icon: "🔥", color: "#ff7a3d", name: "Bỏng" },
   poison: { icon: "☠️", color: "#8fd44a", name: "Trúng độc" },
   bleed:  { icon: "🩸", color: "#e04b4b", name: "Chảy máu" },
+  /* Hệ thống Skill mới: giảm % giáp (defense) + % kháng (resistance/
+     magicResist) trong lúc còn hiệu lực. Dùng bởi kỹ năng chủ động
+     "Phá Giáp Liên Hoàn" (armor_shred_all) và hào quang bị động của
+     Đinh Điền (armor_shred_aura) - xem js/game.js + shared/data-service.js. */
+  sunder: { icon: "🔨", color: "#ff8a3d", name: "Phá giáp" },
 };
 
 /* ---------------- ĐỊCH ---------------- */
@@ -81,6 +86,8 @@ class Enemy {
     this._effectiveSpeedMult = 1;
     this._statusSpeedMult = 1;
     this._extraSlow = 0;      // hào quang làm chậm của tướng (passive slow_aura)
+    this._extraSunder = 0;    // hào quang phá giáp tức thời của tướng (passive armor_shred_aura, Đinh Điền)
+    this._statusSunderMult = 0; // phá giáp từ hiệu ứng "sunder" có thời hạn (skill/vũ khí), xem takeDamage()
     this._stunned = false;
     this._poisoned = false;
     this._animTime = Math.random() * 6; // lệch pha để đám đông không nhấp nháy đồng loạt
@@ -152,6 +159,7 @@ class Enemy {
     let speedMult = 1;
     let stunned = false;
     let poisoned = false;
+    let sunderMult = 0;
     for (let i = this.statusEffects.length - 1; i >= 0; i--) {
       const s = this.statusEffects[i];
       s.timer -= dt;
@@ -165,6 +173,9 @@ class Enemy {
         case "stun":
           stunned = true;
           speedMult = 0;
+          break;
+        case "sunder":
+          sunderMult = Math.max(sunderMult, s.value);
           break;
         case "poison":
           poisoned = true;
@@ -182,6 +193,7 @@ class Enemy {
     }
     if (this._extraSlow > 0) speedMult = Math.min(speedMult, Math.max(0.1, 1 - this._extraSlow));
     this._statusSpeedMult = Math.max(0, speedMult);
+    this._statusSunderMult = Math.min(0.9, sunderMult);
     this._stunned = stunned;
     this._poisoned = poisoned;
   }
@@ -384,12 +396,18 @@ class Enemy {
     let real = amount;
 
     if (!meta.isDot && type !== "true") {
+      // Phá giáp (sunder): giảm % giáp/kháng trước khi tính công thức gốc.
+      // Lấy MAX giữa hiệu ứng có thời hạn (skill/vũ khí) và hào quang tức
+      // thời (passive armor_shred_aura) - không cộng dồn để tránh vượt 90%.
+      const shred = Math.min(0.9, Math.max(this._statusSunderMult || 0, this._extraSunder || 0));
       if (type === "magic") {
-        real = amount * (1 - Math.max(0, this.magicResist) / 100);
+        const magicResist = Math.max(0, this.magicResist * (1 - shred));
+        real = amount * (1 - magicResist / 100);
       } else {
-        const effectiveDefense = Math.max(0, this.defense * (1 - (meta.armorPen || 0) / 100));
+        const effectiveDefense = Math.max(0, this.defense * (1 - shred) * (1 - (meta.armorPen || 0) / 100));
         real = Math.max(0, amount - effectiveDefense);
-        if (this.resistance > 0) real = real * (1 - this.resistance / 100);
+        const resistance = Math.max(0, this.resistance * (1 - shred));
+        if (resistance > 0) real = real * (1 - resistance / 100);
       }
     }
     real = Math.max(1, Math.round(real));
@@ -969,7 +987,7 @@ class Hero {
     this.dmgType = heroDef.heroDamageType || "physical";
   }
 
-  update(dt, enemies) {
+  update(dt, enemies, run) {
     this._animTime += dt;
     if (this._attackFlash > 0) this._attackFlash -= dt;
     if (this._skillFlash > 0) this._skillFlash -= dt;
@@ -987,6 +1005,14 @@ class Hero {
     best.takeDamage(this.damage, { damageType: this.dmgType, armorPen: 15, sourceId: this.id });
     if (typeof EffectManager !== "undefined") {
       EffectManager.spawnBeam(this.x, this.y, best.x, best.y, this.dmgType === "magic" ? "#b98cff" : "#e8c873");
+    }
+    // VŨ KHÍ HERO (Hệ thống mới): mỗi đòn đánh trúng còn có thể kích hoạt
+    // MỘT hiệu ứng chiến đấu riêng theo đúng vũ khí của từng Tướng (xem
+    // js/hero-weapons.js) - hoàn toàn tách biệt khỏi sát thương gốc ở trên
+    // nên nếu vũ khí chưa có trong registry (Tướng mới do Admin tự tạo),
+    // hero vẫn đánh bình thường, không lỗi/không mất hiệu lực gì cả.
+    if (typeof HeroWeapons !== "undefined") {
+      HeroWeapons.onHit(this.def.id, { hero: this, target: best, enemies, run });
     }
     this._attackFlash = 0.18;
     this.cooldown = 1 / Math.max(0.1, this.fireRate);

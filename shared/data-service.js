@@ -38,7 +38,7 @@ const DataService = (() => {
     adminLogs: "collection:adminLogs",
   };
 
-  const SCHEMA_VERSION = 13;
+  const SCHEMA_VERSION = 14;
 
   /* ---------------------------------------------------------
      GIAI ĐOẠN 6 - HỆ THỐNG CẤP VŨ KHÍ / CÔNG TRÌNH 1 -> 10
@@ -1471,7 +1471,15 @@ const DataService = (() => {
          của bản thân tướng trên bản đồ
        passive - kỹ năng bị động: { id, name, description, type, value }
          type: "tower_damage" | "tower_range" | "tower_firerate" |
-               "gold_bonus" | "castle_regen" | "slow_aura" | "crit_bonus"
+               "gold_bonus" | "castle_regen" | "slow_aura" | "crit_bonus" |
+               "heal_on_kill" | "armor_shred_aura" (2 loại cuối - Hệ thống
+               Skill mới, Giai đoạn 9, xem js/game.js):
+                 heal_on_kill      - thành hồi thêm value×cấp tướng HP mỗi
+                                      khi hạ 1 địch (Vạn Hạnh).
+                 armor_shred_aura  - địch trong tầm Tướng bị giảm liên tục
+                                      value×cấp tướng giáp/kháng phép, dùng
+                                      chung cơ chế "sunder" với kỹ năng
+                                      armor_shred_all (Đinh Điền).
      --------------------------------------------------------- */
   function defaultHeroes() {
     return [
@@ -1580,6 +1588,60 @@ const DataService = (() => {
         skillId: "sam_set_tran_tien", skillMaxLevel: 5, skillUpgradeCost: 160,
         enabled: true,
       },
+      /* ---------------------------------------------------------
+         3 TƯỚNG MỚI (Giai đoạn 9 - Hệ thống Skill mới + Vũ khí Hero)
+         Gắn nốt 2 kỹ năng vốn đã có trong defaultSkills() nhưng trước đây
+         CHƯA có Tướng nào dùng (hoa_cong, hoi_phuc_thanh), và giới thiệu
+         kỹ năng + passive HOÀN TOÀN MỚI (armor_shred_all/aura) cho Đinh
+         Điền. Mỗi Tướng có vũ khí 3D + hiệu ứng đánh riêng trong
+         js/hero-weapons.js (khớp theo `id`, giống cách js/weapon-visuals.js
+         khớp theo id Công trình).
+         --------------------------------------------------------- */
+      {
+        id: "luu_co", name: "Lưu Cơ", nameVi: "Lưu Cơ",
+        description: "Đô hộ phủ Sĩ sư, một trong Tứ trụ triều đình nhà Đinh, giỏi mưu lược và hoả công phá địch.",
+        icon: "🔥", image: "",
+        hp: 25, damage: 14, defense: 1,
+        heroDamage: 30, heroRange: 150, heroFireRate: 0.9, heroDamageType: "magic",
+        passive: { id: "muu_luoc_hoa_cong", name: "Mưu Lược Hoả Công", type: "tower_damage", value: 0.07,
+          description: "Mọi tháp được +7% sát thương mỗi cấp tướng." },
+        level: 1, maxLevel: 10,
+        expToUpgrade: 170,
+        unlockCost: 420,
+        upgradeCost: 130,
+        skillId: "hoa_cong", skillMaxLevel: 5, skillUpgradeCost: 165,
+        enabled: true,
+      },
+      {
+        id: "van_hanh", name: "Vạn Hạnh", nameVi: "Thiền sư Vạn Hạnh",
+        description: "Thiền sư cố vấn triều Tiền Lê, đức độ cao thâm, tụng kinh hộ quốc an dân.",
+        icon: "🙏", image: "",
+        hp: 45, damage: 4, defense: 2,
+        heroDamage: 16, heroRange: 140, heroFireRate: 0.7, heroDamageType: "magic",
+        passive: { id: "tam_kinh_ho_quoc", name: "Tâm Kinh Hộ Quốc", type: "heal_on_kill", value: 0.6,
+          description: "Thành tự hồi thêm HP mỗi khi hạ được 1 địch, nhân theo cấp tướng." },
+        level: 1, maxLevel: 10,
+        expToUpgrade: 175,
+        unlockCost: 400,
+        upgradeCost: 128,
+        skillId: "hoi_phuc_thanh", skillMaxLevel: 5, skillUpgradeCost: 150,
+        enabled: true,
+      },
+      {
+        id: "dinh_dien", name: "Đinh Điền", nameVi: "Đinh Điền",
+        description: "Danh tướng khai quốc nhà Đinh, chuỳ sắt phá tan hàng ngũ, khiến quân địch không còn giáp che thân.",
+        icon: "🔨", image: "",
+        hp: 38, damage: 18, defense: 2,
+        heroDamage: 32, heroRange: 135, heroFireRate: 0.85, heroDamageType: "physical",
+        passive: { id: "hao_quang_pha_giap", name: "Hào Quang Phá Giáp", type: "armor_shred_aura", value: 0.03,
+          description: "Địch trong tầm liên tục bị giảm 3% giáp/kháng phép mỗi cấp tướng." },
+        level: 1, maxLevel: 10,
+        expToUpgrade: 180,
+        unlockCost: 440,
+        upgradeCost: 135,
+        skillId: "pha_giap_lien_hoan", skillMaxLevel: 5, skillUpgradeCost: 170,
+        enabled: true,
+      },
     ];
   }
 
@@ -1592,6 +1654,10 @@ const DataService = (() => {
        buff_damage    - tăng sát thương mọi tháp trong `duration` giây
        stun_all       - làm choáng toàn bộ địch trong `duration` giây
        shield_castle  - tăng giáp thành (giảm ST nhận) trong `duration` giây
+       armor_shred_all - giảm `value`×100% giáp/kháng phép TOÀN BỘ địch
+                         trong `duration` giây (Hệ thống Skill mới - Giai
+                         đoạn 9). Dùng cơ chế "sunder" mới trong Enemy
+                         (js/entities.js: STATUS_META.sunder, takeDamage()).
      perLevelBonus: mỗi cấp KỸ NĂNG cộng thêm bao nhiêu % hiệu lực.
      --------------------------------------------------------- */
   function defaultSkills() {
@@ -1668,6 +1734,14 @@ const DataService = (() => {
         icon: "⚡", cooldown: 38, manaCost: 0,
         effect: "stun_all", damage: 12, heal: 0, area: 0, duration: 2.5,
         damageType: "magic", perLevelBonus: 0.18,
+        enabled: true,
+      },
+      {
+        id: "pha_giap_lien_hoan", name: "Phá Giáp Liên Hoàn",
+        description: "Chuỳ sắt nện liên hoàn, giảm mạnh giáp và kháng phép của toàn bộ quân địch trong 6 giây.",
+        icon: "🔨", cooldown: 34, manaCost: 0,
+        effect: "armor_shred_all", damage: 0, heal: 0, area: 0, duration: 6, value: 0.35,
+        damageType: "physical", perLevelBonus: 0.15,
         enabled: true,
       },
     ];
@@ -2481,6 +2555,40 @@ const DataService = (() => {
     console.info("[DataService] Đã di trú lên schemaVersion 13: thêm hệ thống Điểm danh (Daily Reward) - player.dailyReward + collection dailyRewards, không đổi dữ liệu khác.");
   }
 
+  /* Bổ sung 3 Tướng mới (Lưu Cơ, Vạn Hạnh, Đinh Điền) + 1 Kỹ năng mới
+     (pha_giap_lien_hoan) cho những máy đã có dữ liệu từ trước, theo đúng
+     nguyên tắc CHỈ THÊM record còn thiếu (theo id), KHÔNG đụng tới bất kỳ
+     Tướng/Kỹ năng nào Admin đã tạo/sửa - giống hệt cách skills đã làm ở
+     ensureGiaiDoan4Fields() phía trên. */
+  function ensureHeroWeaponSkillFields() {
+    const byId = (arr) => { const m = {}; for (const x of arr) m[x.id] = x; return m; };
+    const heroDefaults = byId(defaultHeroes());
+    const heroes = list("heroes");
+    const heroIds = new Set(heroes.map((h) => h.id));
+    const patchedHeroes = heroes.slice();
+    for (const id of Object.keys(heroDefaults)) {
+      if (!heroIds.has(id)) patchedHeroes.push(heroDefaults[id]);
+    }
+    replaceAll("heroes", patchedHeroes);
+
+    const skillDefaults2 = byId(defaultSkills());
+    const skills2 = list("skills");
+    const skillIds2 = new Set(skills2.map((k) => k.id));
+    const patchedSkills2 = skills2.slice();
+    for (const id of Object.keys(skillDefaults2)) {
+      if (!skillIds2.has(id)) patchedSkills2.push(skillDefaults2[id]);
+    }
+    replaceAll("skills", patchedSkills2);
+  }
+
+  function migrateSchemaV13ToV14() {
+    const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
+    if (currentVersion >= 14) return;
+    ensureHeroWeaponSkillFields();
+    StorageService.set(KEYS.schemaVersion, 14);
+    console.info("[DataService] Đã di trú lên schemaVersion 14 (Hệ thống Skill mới + Vũ khí Hero): thêm 3 Tướng (Lưu Cơ, Vạn Hạnh, Đinh Điền), 1 Kỹ năng mới (Phá Giáp Liên Hoàn) và hiệu ứng \"sunder\" (phá giáp) - không đụng dữ liệu Tướng/Kỹ năng đã có.");
+  }
+
   /* Di trú schemaVersion 8 -> 9 (Giai đoạn 4: combat/tower/hero/map/audio). */
   function migrateSchemaV8ToV9() {
     const currentVersion = StorageService.get(KEYS.schemaVersion, 0);
@@ -2511,6 +2619,7 @@ const DataService = (() => {
     migrateSchemaV10ToV11();
     migrateSchemaV11ToV12();
     migrateSchemaV12ToV13();
+    migrateSchemaV13ToV14();
     if (!StorageService.has(KEYS.schemaVersion)) {
       StorageService.set(KEYS.schemaVersion, SCHEMA_VERSION);
     }

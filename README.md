@@ -448,3 +448,39 @@ sạch khi rời trận, và tắt/bật lại được chế độ 3D.
 
 ## Tương thích dữ liệu
 `migrateSchemaV10ToV11` chỉ THÊM, không ghi đè. Đã kiểm chứng: giá/tên công trình do Admin sửa tay, vàng và số sao của người chơi đều giữ nguyên sau khi cập nhật.
+
+---
+
+## 13. Giai đoạn 9 – Hệ thống Skill mới + Vũ khí Hero
+
+**Vũ khí Hero (`js/hero-weapons.js`, tệp mới)** – khớp theo `id` Tướng, cùng nguyên tắc với `weapon-visuals.js` của Công trình. Mỗi Tướng có:
+1. **Vũ khí 3D cầm tay** riêng (gắn thêm vào `_makeHeroMesh()`, không đụng áo/vương miện/hào quang nên tước hiệu `hero-tiers.js` vẫn hoạt động; vũ khí vung nhẹ khi ra đòn; mesh được dựng lại khi đổi Tướng giữa 2 ván).
+2. **Hiệu ứng đánh riêng (`onHit`)**, gọi từ `Hero.update()` sau đòn chính (không đổi `heroDamage` đã cân bằng):
+
+| Tướng | Vũ khí | Hiệu ứng khi đánh trúng |
+|---|---|---|
+| Đinh Bộ Lĩnh | Cờ lệnh | +15% sát thương chuẩn |
+| Lê Hoàn | Cung | Xuyên: 40% sát thương lên 1 địch gần mục tiêu |
+| Ngô Quyền | Giáo cọc | 30% làm chậm 1,5s |
+| Dương Vân Nga | Quạt lụa | 25% hồi 0,4 HP thành |
+| Đinh Liễn | Song kiếm | 25% chém thêm nhát 50% |
+| Nguyễn Bặc | Khiên + kiếm | 20% cho thành khiên nhỏ 2,5s |
+| Phạm Cự Lạng | Trống trận | Nổ diện hẹp (36px) 30% sát thương |
+| **Lưu Cơ** (mới) | Giáo lửa | 30% gây Bỏng |
+| **Vạn Hạnh** (mới) | Thiền trượng | Hồi 0,25 HP thành |
+| **Đinh Điền** (mới) | Chuỳ sắt | Áp "Phá giáp" 15% trong 2,5s |
+
+Id không có trong registry (Tướng Admin tự tạo) vẫn đánh bình thường.
+
+**Skill mới**
+- Hiệu ứng trạng thái **`sunder` (Phá giáp)**: giảm % giáp + kháng vật lý + kháng phép của địch (`Enemy.takeDamage()`), lấy MAX giữa nguồn có thời hạn và hào quang, trần 90%.
+- Kỹ năng chủ động **`armor_shred_all`** – "Phá Giáp Liên Hoàn".
+- Passive mới **`armor_shred_aura`** (địch trong tầm bị phá giáp liên tục) và **`heal_on_kill`** (hồi HP thành mỗi lần hạ địch).
+- **3 Tướng mới** (tổng 10): Lưu Cơ (`hoa_cong`), Vạn Hạnh (`hoi_phuc_thanh`) – nối nốt 2 kỹ năng trước đó chưa Tướng nào dùng; Đinh Điền (`pha_giap_lien_hoan` + `armor_shred_aura`).
+- Admin: thêm `armor_shred_all` vào dropdown effect, cập nhật gợi ý `passive`/`statusEffect`.
+
+**Dữ liệu:** `schemaVersion` 13 → **14**; `migrateSchemaV13ToV14()` chỉ THÊM Tướng/Kỹ năng còn thiếu (theo id), không ghi đè dữ liệu Admin đã sửa.
+
+**Kiểm thử:** `node test/hero-weapons.test.js` (38 kiểm tra: cài mới, di trú v13→v14 giữ chỉnh sửa Admin, 10 vũ khí, an toàn với id lạ) và `node test/daily-reward.test.js` (32, vẫn đạt).
+
+**Chưa làm:** chưa chạy thử trực quan trên trình duyệt (WebGL) — hình dáng/vị trí vũ khí 3D mới chỉ kiểm tra cú pháp + logic, nên có thể cần chỉnh kích thước/vị trí khi xem thực tế. Skill `gold_rush` từng dự tính chưa được thêm.
