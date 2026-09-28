@@ -484,3 +484,35 @@ Id không có trong registry (Tướng Admin tự tạo) vẫn đánh bình thư
 **Kiểm thử:** `node test/hero-weapons.test.js` (38 kiểm tra: cài mới, di trú v13→v14 giữ chỉnh sửa Admin, 10 vũ khí, an toàn với id lạ) và `node test/daily-reward.test.js` (32, vẫn đạt).
 
 **Chưa làm:** chưa chạy thử trực quan trên trình duyệt (WebGL) — hình dáng/vị trí vũ khí 3D mới chỉ kiểm tra cú pháp + logic, nên có thể cần chỉnh kích thước/vị trí khi xem thực tế. Skill `gold_rush` từng dự tính chưa được thêm.
+
+---
+
+## 14. Giai đoạn 10 – Ngoại hình riêng cho từng loại quân địch
+
+**Trước:** `_makeEnemyMesh()` dựng đúng MỘT hình (thân capsule + đầu tròn) cho mọi địch, chỉ đổi màu theo `def.color` – Kỵ binh, Cung thủ, Thầy mo, Boss... nhìn giống hệt nhau.
+
+**Nay:** module mới `js/enemy-visuals.js` (`EnemyVisuals`), cùng mô hình với `weapon-visuals.js` / `hero-weapons.js`. Ba tầng tra cứu, **luôn trả về hình hợp lệ**:
+1. Theo **ID** loại địch/Boss – 26 kiểu riêng (13 địch thường + 10 Boss + 3 Mini Boss).
+2. Không có ID (địch Admin tự tạo) → theo **`behavior`**: `dash`→kỵ binh, `armored`→thiết kỵ, `flying`→chim, `healer`→thầy mo, `shield`→lính khiên, `regen`→ma, `splitter`→quỷ tốt; Boss chưa đăng ký (`boss`/`boss_*`) → khung Boss chung (sừng + áo choàng + hào quang).
+3. Còn lại → bộ binh mặc định. Bộ dựng lỗi / dữ liệu rác (màu sai, thiếu field) không làm sập, rơi về bộ binh.
+
+| Nhóm | Đặc điểm nhận dạng |
+|---|---|
+| Quân sứ quân / Thổ phỉ | nón lá + giáo ngắn / khăn bịt mặt + 2 dao găm |
+| Kỵ binh / Thiết kỵ | ngựa nâu + thương cờ hiệu / ngựa giáp sắt, mũ kín, khiên tròn (chân ngựa phi) |
+| Trường giáp binh / Lính khiên chắn | váy giáp dài + giáo dài / khiên chữ nhật lớn |
+| Cung thủ địch / Cung nỏ Tống | mũ trùm + cung + ống tên / nón Tống rộng vành + nỏ |
+| Tướng giặc | mũ sừng lông đuôi đỏ, áo choàng, gươm lớn |
+| Diều hâu | chim săn mồi, cánh vỗ |
+| Thầy mo / Ma binh / Quỷ tốt | mặt nạ + trượng + cầu quay / hồn ma trong suốt, mắt sáng / tiểu quỷ sừng, nanh, chùy gai |
+| Boss (10) + Mini Boss (3) | mỗi tên một dáng riêng (mào lửa Hoả Long, mũ cánh chuồn Cao Chính Bình, neo sắt Thuỷ Tặc Chúa, đại đao Hầu Nhân Bảo, cờ lệnh Quách Quân Biện, đại kiếm Đại Tướng Xâm Lăng, gạc nai + trống Nguyễn Siêu, mũ sọ + chùy gai Đỗ Cảnh Thạc, vương miện + 2 cờ Nguyên Soái, 12 quả cầu quay của Ma Vương...) kèm vòng hào quang |
+
+**Thay đổi ở `renderer3d.js`:**
+- `_makeEnemyMesh(e)` lắp ráp từ `EnemyVisuals.build()`; thân + phụ kiện nằm trong `rig` (nhún/nâng cả bộ thay vì chỉ nhún thân; khiên chắn đứng ngoài rig). Hoạt ảnh nhẹ: cánh vỗ, chân ngựa phi, cờ bay, cầu quay, hào quang thở.
+- **Pool gán theo LOẠI địch** (`styleKey = typeId`) thay vì theo chỉ số – nếu không, mỗi lần 1 địch chết các địch sau bị dồn sang mesh của loại khác, buộc dựng lại hình liên tục.
+- `_trimEnemyPool()` mới: chỉ dọn mesh đang ẩn (`_trimPool` cũ pop từ cuối mảng, sẽ huỷ nhầm mesh đang hiển thị khi pool gán theo loại).
+- Màu trạng thái (choáng/độc) và phát sáng Boss/Elite vẫn áp lên `body` như cũ; `def.color` vẫn quyết định màu thân/áo nên Admin đổi màu địch vẫn có hiệu lực.
+
+**Kiểm thử:** `node test/enemy-visuals.test.js` (453 kiểm tra, nạp three.js thật của dự án: 26 kiểu dựng được, kích thước hợp lý, địch thường khác nhau về hình, đường dự phòng theo behavior, dữ liệu rác). Đã chạy game thật trong Chromium headless (WebGL): 0 lỗi console, pool khớp đúng loại địch kể cả sau khi giết nửa số địch.
+
+**Lưu ý:** hình dựng bằng khối hình học cơ bản (low-poly, giống phong cách toàn game), không dùng mô hình/texture ngoài. Ở zoom mặc định địch khá nhỏ nên chi tiết nhỏ (dao găm, bịt mặt) chỉ rõ khi phóng to. Màn Bestiary/Codex (nếu có) vẫn dùng icon emoji như cũ.

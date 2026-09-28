@@ -776,20 +776,45 @@ const Renderer3D = {
     }
   },
 
-  _makeEnemyMesh() {
+  /* Dựng mesh địch theo LOẠI (typeId). Ngoại hình riêng nằm hết trong
+     js/enemy-visuals.js (tra theo ID, rồi theo behavior, rồi mặc định);
+     ở đây chỉ lắp ráp: rig (nhún/nâng cả bộ) chứa thân + phụ kiện, còn
+     khiên chắn (shield) đứng ngoài rig để không bị nhún theo. */
+  _makeEnemyMesh(e) {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(6, 8, 4, 10), this._mat(0xffffff));
-    body.position.y = 11;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(4.6, 10, 8), this._mat(0xf0d9b5));
-    head.position.y = 21;
+    const rig = new THREE.Group();
+    let style = null;
+    if (typeof EnemyVisuals !== "undefined" && e) {
+      style = EnemyVisuals.build(THREE, e.typeId, e.def, (c, o) => this._mat(c, o));
+    }
+    let body, head = null;
+    if (style) {
+      body = style.body;
+      rig.add(body);
+      for (const part of style.parts) rig.add(part);
+    } else {
+      // dự phòng tuyệt đối (thiếu enemy-visuals.js): hình gốc cũ
+      body = new THREE.Mesh(new THREE.CapsuleGeometry(6, 8, 4, 10), this._mat(0xffffff));
+      body.position.y = 11;
+      head = new THREE.Mesh(new THREE.SphereGeometry(4.6, 10, 8), this._mat(0xf0d9b5));
+      head.position.y = 21;
+      rig.add(body, head);
+    }
+    const height = (style && style.height) || 26;
     const shield = new THREE.Mesh(
       new THREE.SphereGeometry(13, 12, 9),
       new THREE.MeshLambertMaterial({ color: 0x79c8f0, transparent: true, opacity: 0.3 })
     );
-    shield.position.y = 13;
+    shield.position.y = height / 2;
+    shield.scale.setScalar(Math.max(1, height / 26));
     shield.visible = false;
-    g.add(body, head, shield);
-    g.userData = { body, head, shield };
+    g.add(rig, shield);
+    g.userData = {
+      body, head, shield, rig,
+      anim: style ? style.anim || null : null,
+      lift: style ? style.lift || 0 : 0,
+      styleKey: e ? e.typeId : "_",
+    };
     g.traverse((m) => { if (m.isMesh) m.castShadow = this.renderer.shadowMap.enabled; });
     this._dynGroup.add(g);
     return g;
@@ -967,11 +992,24 @@ const Renderer3D = {
     }
 
     // --- quân địch (dùng pool, không cấp phát mới mỗi khung hình) ---
+    // Mesh được gán theo LOẠI địch (styleKey = typeId), không theo chỉ số:
+    // khi 1 địch chết, các địch sau không bị dồn sang mesh của loại khác
+    // (nếu không sẽ phải dựng lại hình liên tục mỗi lần có địch chết).
     const enemies = run ? run.enemies : [];
+    const freeByType = this._enemyFree || (this._enemyFree = new Map());
+    for (const list of freeByType.values()) list.length = 0;
+    for (const m of this._enemyPool) {
+      m.visible = false;
+      const k = m.userData.styleKey;
+      let list = freeByType.get(k);
+      if (!list) { list = []; freeByType.set(k, list); }
+      list.push(m);
+    }
     for (let i = 0; i < enemies.length; i++) {
       const e = enemies[i];
-      let mesh = this._enemyPool[i];
-      if (!mesh) { mesh = this._makeEnemyMesh(); this._enemyPool.push(mesh); }
+      const free = freeByType.get(e.typeId);
+      let mesh = free && free.length ? free.pop() : null;
+      if (!mesh) { mesh = this._makeEnemyMesh(e); this._enemyPool.push(mesh); }
       mesh.visible = true;
       const scale = (e.def.radius || 12) / 12 * (e.isBoss ? 2.1 : (e.isElite ? 1.25 : 1));
       mesh.scale.setScalar(scale);
@@ -990,11 +1028,11 @@ const Renderer3D = {
       ud.body.material.color.set(col);
       ud.body.material.emissive.set(e.isBoss ? 0x3a1010 : (e.isElite ? 0x2a2005 : 0x000000));
       ud.shield.visible = (e.shield || 0) > 0;
-      // nhún nhẹ khi đi bộ
-      ud.body.position.y = 11 + (e._stunned ? 0 : Math.abs(Math.sin(t * 6 + i)) * 1.6);
+      // nhún nhẹ khi đi bộ (cả bộ khung, kể cả phụ kiện) + nâng (ma bay lơ lửng)
+      ud.rig.position.y = ud.lift + (e._stunned ? 0 : Math.abs(Math.sin(t * 6 + i)) * 1.6);
+      if (ud.anim && !e._stunned) ud.anim(t, i);   // cánh vỗ / chân phi / cờ bay...
     }
-    for (let i = enemies.length; i < this._enemyPool.length; i++) this._enemyPool[i].visible = false;
-    this._trimPool(this._enemyPool, enemies.length);
+    this._trimEnemyPool(enemies.length);
 
     // --- đạn ---
     const projs = run ? run.projectiles : [];
@@ -1125,6 +1163,20 @@ const Renderer3D = {
       this.camera.position.set(tx + shake.x * 1.4, 640 * d + shake.y * 1.4, tz + 690 * d);
       this.camera.lookAt(tx, 0, tz);
       if (fog) { fog.near = 900; fog.far = 2200; }
+    }
+  },
+
+  /* Dọn pool địch: CHỈ bỏ mesh đang ẩn (không dùng khung hình này). Không
+     dùng _trimPool() vì nó pop từ cuối mảng - với pool gán theo loại địch,
+     mesh đang hiển thị có thể nằm ở cuối và sẽ bị huỷ nhầm. */
+  _trimEnemyPool(needed) {
+    const keep = Math.max(needed + 24, 32);
+    for (let i = this._enemyPool.length - 1; i >= 0 && this._enemyPool.length > keep; i--) {
+      const m = this._enemyPool[i];
+      if (m.visible) continue;
+      this._enemyPool.splice(i, 1);
+      this._dynGroup.remove(m);
+      this._disposeGroup(m);
     }
   },
 
@@ -1279,9 +1331,9 @@ const Renderer3D = {
     if (!this.scene) return;
     for (const [, mesh] of this._towerMeshes) { this._dynGroup.remove(mesh); this._disposeGroup(mesh); }
     this._towerMeshes.clear();
-    this._trimPool(this._enemyPool, 0);
-    this._trimPool(this._projPool, 0);
     for (const m of this._enemyPool) m.visible = false;
+    this._trimEnemyPool(0);
+    this._trimPool(this._projPool, 0);
     for (const m of this._projPool) m.visible = false;
     if (this._hero) this._hero.visible = false;
     if (this._rangeRing) this._rangeRing.visible = false;
